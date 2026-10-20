@@ -1,0 +1,30 @@
+{
+  "name": "@colada/mcp",
+  "version": "0.0.0",
+  "description": "Local read-only MCP server for Colada support",
+  "license": "UNLICENSED",
+  "type": "module",
+  "bin": {
+    "colada-mcp": "dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "lint": "biome check ."
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@napi-rs/keyring": "^2.1.2",
+    "open": "^11.0.4",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  }
+}
