@@ -1,7 +1,7 @@
 import { ApiClient } from './api/client.js'
 import { RealmSession, type SessionDeps } from './auth/session.js'
 import type { CallLog } from './callLog.js'
-import { type Env, hostOf, REALMS, type Realm } from './config.js'
+import { type Env, hostOf, isRealm, REALMS, type Realm } from './config.js'
 import { messages, ToolError } from './errors.js'
 import { WorkspaceDirectory } from './workspaces.js'
 
@@ -23,7 +23,8 @@ export class App {
     this.api = new ApiClient(deps.fetch)
   }
 
-  realm(realm: Realm): RealmContext {
+  realm(realm: string): RealmContext {
+    if (!isRealm(realm)) throw new ToolError(messages.unknownRealm(realm))
     const existing = this.realms.get(realm)
     if (existing) return existing
     const host = hostOf(this.deps.env, realm)
@@ -38,7 +39,7 @@ export class App {
     return REALMS.filter((realm) => hostOf(this.deps.env, realm) !== undefined)
   }
 
-  userOf(realm: Realm | null): string | null {
-    return realm === null ? null : (this.realms.get(realm)?.session.user() ?? null)
+  userOf(realm: string | null): string | null {
+    return realm !== null && isRealm(realm) ? (this.realms.get(realm)?.session.user() ?? null) : null
   }
 }

@@ -173,7 +173,7 @@ describe('login and session', () => {
     await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
     const result = await h.call('logout')
 
-    expect(result.body).toEqual({ realm: null, user: 'frank', workspace: null, message: 'Logged out from default.' })
+    expect(result.body).toEqual({ realm: null, user: 'frank', workspace: null, message: 'Logged out from all realms.' })
     expect(h.store.values.has(STAGE)).toBe(false)
 
     const backendBefore = h.world.backendRequests().length
@@ -465,7 +465,7 @@ describe('realms', () => {
     expect((await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })).isError).toBe(false)
 
     const allOut = await h.call('logout')
-    expect(allOut.body.message).toBe('Logged out from default, vw, abiomed, lidl.')
+    expect(allOut.body.message).toBe('Logged out from all realms.')
     expect(h.store.values.size).toBe(0)
   })
 
@@ -522,5 +522,28 @@ describe('NFR: no token in answers or logs', () => {
     for (const token of h.world.issued) expect(all).not.toContain(token)
     expect(all).not.toMatch(/eyJ[a-zA-Z0-9_-]{10,}/)
     expect(all).not.toContain('SECRETVALUE')
+  })
+})
+
+describe('tool definitions', () => {
+  it('name no customer realm in tools/list, in stage and prod', async () => {
+    for (const env of ['stage', 'prod'] as const) {
+      const h = await setup({ env })
+      const definitions = JSON.stringify(await h.client.listTools())
+      expect(definitions).not.toMatch(/vw|abiomed|lidl/i)
+    }
+  })
+
+  it('an unknown realm gives an error without the realm list and sends no request', async () => {
+    const h = await setup({ env: 'prod' })
+    const result = await h.call('get_event', { realm: 'acme', eventId: EVENT_A })
+    expect(result.body).toMatchObject({
+      realm: 'acme',
+      user: null,
+      workspace: null,
+      error: 'Unknown realm "acme". Leave realm out for the main realm.'
+    })
+    expect(h.opened).toHaveLength(0)
+    expect(h.world.requests).toHaveLength(0)
   })
 })

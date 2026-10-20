@@ -2,15 +2,14 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import type { CallState } from '../api/backend.js'
 import type { App } from '../app.js'
-import { REALMS, type Realm } from '../config.js'
 import { ToolError } from '../errors.js'
 import type { ResolvedWorkspace } from '../workspaces.js'
 
 export const realmInput = z
-  .enum(REALMS)
+  .string()
   .optional()
   .describe(
-    'Keycloak realm of the workspace, from list_workspaces. Use default unless the workspace is in vw, abiomed or lidl.'
+    'Keycloak realm of the workspace. Leave it out for the main realm; pass another realm only when the user names it.'
   )
 
 export const workspaceInput = z
@@ -30,7 +29,7 @@ export async function runTool(
   app: App,
   tool: string,
   params: Record<string, unknown>,
-  realm: Realm | null,
+  realm: string | null,
   handler: (ctx: ToolContext) => Promise<Record<string, unknown>>
 ): Promise<CallToolResult> {
   const ctx: ToolContext = { state: { httpStatus: null }, workspace: null }

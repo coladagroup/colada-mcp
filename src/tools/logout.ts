@@ -21,7 +21,7 @@ export function registerLogout(server: McpServer, app: App) {
           user = (await app.realm(realm).session.logout()) ?? user
         }
         ctx.user = user
-        return { message: `Logged out from ${realms.join(', ')}.` }
+        return { message: params.realm ? `Logged out from ${params.realm}.` : 'Logged out from all realms.' }
       })
   )
 }
