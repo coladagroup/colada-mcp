@@ -1,0 +1,50 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+  id-token: write
+
+jobs:
+  claude-review:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    concurrency:
+      group: claude-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this PR. Read the PR title and description first to understand the intent, then get the changes with `gh pr diff`.
+
+            Focus only on critical issues:
+            - Correctness bugs
+            - Security problems
+            - Performance regressions
+
+            Before flagging an issue, read the surrounding code in the changed file — do not report problems that the existing code already handles. Reference each issue as `path/to/file:line`.
+
+            Only request changes for issues you are confident are real and must be fixed before merging. If a concern is uncertain or minor, approve and mention it as a non-blocking note. Skip style suggestions; the repository's CLAUDE.md defines the conventions.
+
+            Submit a formal review with your Bash tool:
+            - If no critical issues are found: gh pr review ${{ github.event.pull_request.number }} --approve --body "<one-sentence summary of what you checked, plus any non-blocking notes>"
+            - If critical issues are found: gh pr review ${{ github.event.pull_request.number }} --request-changes --body "<the issues as short bullet points with file:line>"
+
+            The formal review is the deliverable — do not post a separate `gh pr comment` with the verdict.
+          claude_args: '--model sonnet --allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr review:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
