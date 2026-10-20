@@ -541,7 +541,7 @@ describe('tool definitions', () => {
       realm: 'acme',
       user: null,
       workspace: null,
-      error: 'Unknown realm "acme". Leave realm out for the main realm.'
+      error: 'Unknown realm "acme". Use default unless the user names another realm.'
     })
     expect(h.opened).toHaveLength(0)
     expect(h.world.requests).toHaveLength(0)

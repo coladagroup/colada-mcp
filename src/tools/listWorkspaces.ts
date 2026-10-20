@@ -7,7 +7,7 @@ export function registerListWorkspaces(server: McpServer, app: App) {
     'list_workspaces',
     {
       description:
-        'Lists the Colada workspaces you can open in one realm (the main realm when realm is left out). Another realm needs its own browser login. Pass the workspace id or exact name, and the same realm, to the other tools.',
+        'Lists the Colada workspaces you can open in one realm (default: default). Another realm needs its own browser login. Pass the workspace id or exact name, and the same realm, to the other tools.',
       inputSchema: { realm: realmInput },
       annotations: { readOnlyHint: true }
     },

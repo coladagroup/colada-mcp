@@ -8,9 +8,7 @@ import type { ResolvedWorkspace } from '../workspaces.js'
 export const realmInput = z
   .string()
   .optional()
-  .describe(
-    'Keycloak realm of the workspace. Leave it out for the main realm; pass another realm only when the user names it.'
-  )
+  .describe('Keycloak realm of the workspace. Default: default. Pass another realm only when the user names it.')
 
 export const workspaceInput = z
   .string()
