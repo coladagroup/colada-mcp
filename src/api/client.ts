@@ -24,20 +24,27 @@ export class ApiClient {
           Accept: 'application/json',
           'Accept-Language': 'en'
         },
+        redirect: 'error',
         signal: AbortSignal.timeout(this.timeoutMs)
       })
     } catch {
       throw new ToolError(messages.failed(path, null))
     }
-    const text = await response.text().catch(() => '')
-    let body: unknown = null
-    if (text !== '') {
-      try {
-        body = JSON.parse(text)
-      } catch {
-        body = null
-      }
+    const ok = response.status >= 200 && response.status < 300
+    let text: string
+    try {
+      text = await response.text()
+    } catch {
+      if (ok) throw new ToolError(messages.failed(path, null))
+      text = ''
     }
+    let body: unknown = null
+    try {
+      body = text === '' ? null : JSON.parse(text)
+    } catch {
+      body = null
+    }
+    if (ok && body === null) throw new ToolError(messages.failed(path, response.status))
     return { status: response.status, headers: response.headers, body } satisfies ApiResponse
   }
 }

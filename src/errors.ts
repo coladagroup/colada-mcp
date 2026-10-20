@@ -1,17 +1,10 @@
-export class ToolError extends Error {
-  constructor(
-    message: string,
-    readonly httpStatus: number | null = null
-  ) {
-    super(message)
-  }
-}
+export class ToolError extends Error {}
 
 export const messages = {
-  loginOpened: (realm: string, host: string, url?: string) =>
-    `Login opened in your browser for realm ${realm} on ${host}. Finish it, then call the tool again.` +
-    (url ? ` If no browser tab opened, open this URL: ${url}` : ''),
+  loginOpened: (realm: string, host: string, url: string) =>
+    `Login opened in your browser for realm ${realm} on ${host}. Finish it, then call the tool again. If no browser tab opened, open this URL: ${url}`,
   loginInProgress: () => 'Login is in progress in your browser. Finish it, then call the tool again.',
+  loggedOut: () => 'The session ended while this call was running. Call the tool again.',
   noAccess: (workspace: string, realm: string) =>
     `No access to workspace ${workspace} in realm ${realm}. You are not a member of it, it does not exist, or it belongs to another realm (see list_workspaces).`,
   realmNotAvailable: (realm: string, env: string) =>

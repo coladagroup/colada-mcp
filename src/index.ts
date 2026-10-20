@@ -27,7 +27,6 @@ const app = new App({
   openBrowser: async (url) => {
     const child = await open(url)
     child.on('error', () => undefined)
-    return true
   }
 })
 

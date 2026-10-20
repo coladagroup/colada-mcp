@@ -52,7 +52,7 @@ describe('login and session', () => {
 
     expect(result.isError).toBe(true)
     expect(result.body.error).toBe(
-      `Login opened in your browser for realm default on ${STAGE}. Finish it, then call the tool again.`
+      `Login opened in your browser for realm default on ${STAGE}. Finish it, then call the tool again. If no browser tab opened, open this URL: ${h.opened[0]}`
     )
     expect(h.opened).toHaveLength(1)
     const url = new URL(h.opened[0] ?? '')
@@ -112,12 +112,16 @@ describe('login and session', () => {
     expect(h.opened).toHaveLength(2)
   })
 
-  it('AC1: without a browser the message contains the login URL', async () => {
-    const world = new FakeWorld()
-    const h = await setup({ loggedIn: false, world })
-    ;(h.app.deps as { openBrowser: (url: string) => Promise<boolean> }).openBrowser = async () => false
+  it('AC1: when the browser launcher fails the login still starts and the message has the URL', async () => {
+    const h = await setup({ loggedIn: false })
+    ;(h.app.deps as { openBrowser: (url: string) => Promise<void> }).openBrowser = async () => {
+      throw new Error('no browser')
+    }
     const result = await h.call('list_workspaces')
     expect(result.body.error).toContain(`https://${STAGE}/auth/realms/default/protocol/openid-connect/auth?`)
+    expect(h.stderr).toEqual(['colada-mcp: cannot open the browser (no browser)'])
+    await h.completeLogin(String(result.body.error).split('open this URL: ')[1])
+    expect((await h.call('list_workspaces')).isError).toBe(false)
   })
 
   it('AC2: an expiring access token is refreshed once and the call completes', async () => {
@@ -429,7 +433,7 @@ describe('realms', () => {
     const first = await h.call('list_workspaces', { realm: 'lidl' })
 
     expect(first.body.error).toBe(
-      `Login opened in your browser for realm lidl on ${LIDL}. Finish it, then call the tool again.`
+      `Login opened in your browser for realm lidl on ${LIDL}. Finish it, then call the tool again. If no browser tab opened, open this URL: ${h.opened[0]}`
     )
     expect(new URL(h.opened[0] ?? '').host).toBe(LIDL)
     expect(new URL(h.opened[0] ?? '').pathname).toBe('/auth/realms/lidl/protocol/openid-connect/auth')

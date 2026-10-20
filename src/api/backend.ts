@@ -35,7 +35,7 @@ export async function callBackend(
     if (response.status === 401) return session.end()
   }
   if (response.status >= 200 && response.status < 300) return response
-  if (response.status === 403) throw new ToolError(messages.forbidden(request.path), 403)
-  if (response.status === 404 && request.notFound) throw new ToolError(request.notFound, 404)
-  throw new ToolError(messages.failed(request.path, response.status), response.status)
+  if (response.status === 403) throw new ToolError(messages.forbidden(request.path))
+  if (response.status === 404 && request.notFound) throw new ToolError(request.notFound)
+  throw new ToolError(messages.failed(request.path, response.status))
 }

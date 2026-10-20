@@ -21,6 +21,7 @@ export async function postToken(
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
     body: new URLSearchParams({ client_id: CLIENT_ID, ...params }).toString(),
+    redirect: 'error',
     signal: AbortSignal.timeout(30_000)
   })
   let json: Record<string, unknown> = {}

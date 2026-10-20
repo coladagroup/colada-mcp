@@ -12,7 +12,7 @@ export function registerListWorkspaces(server: McpServer, app: App) {
       annotations: { readOnlyHint: true }
     },
     (params) => {
-      const realm = params.realm ?? 'default'
+      const realm = params.realm || 'default'
       return runTool(app, 'list_workspaces', params, realm, async (ctx) => {
         const { directory } = app.realm(realm)
         return { workspaces: await directory.list(ctx.state, true) }

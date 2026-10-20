@@ -48,6 +48,7 @@ export interface Recorded {
   method: string
   headers: Record<string, string>
   form: URLSearchParams | null
+  redirect: RequestRedirect | undefined
 }
 
 function json(status: number, body: unknown, headers: Record<string, string> = {}) {
@@ -65,6 +66,7 @@ export class FakeWorld {
   readonly realms = new Map<string, FakeRealm>()
   readonly events = new Map<string, Map<string, unknown>>()
   readonly backendStatus = new Map<string, number>()
+  readonly backendRaw = new Map<string, () => Response>()
   backendDelayMs = 0
   tokenDelayMs = 0
   private counter = 0
@@ -122,7 +124,7 @@ export class FakeWorld {
     const url = new URL(String(input))
     const headers = Object.fromEntries(new Headers(init?.headers).entries())
     const form = typeof init?.body === 'string' ? new URLSearchParams(init.body) : null
-    this.requests.push({ url, method: init?.method ?? 'GET', headers, form })
+    this.requests.push({ url, method: init?.method ?? 'GET', headers, form, redirect: init?.redirect })
     const realm = this.realms.get(url.host)
     if (!realm) throw new TypeError('fetch failed')
     if (url.pathname.endsWith('/protocol/openid-connect/token')) {
@@ -164,6 +166,8 @@ export class FakeWorld {
     if ((claims.exp as number) <= this.now) return json(401, undefined)
     const forced = this.backendStatus.get(url.pathname)
     if (forced) return json(forced, undefined)
+    const raw = this.backendRaw.get(url.pathname)
+    if (raw) return raw()
     if (url.pathname === '/_gw/s-workspaces/api/workspaces') return json(200, realm.workspaces)
     const match = url.pathname.match(/^\/_gw\/s-events\/api\/events\/([^/]+)$/)
     if (match) {
@@ -180,6 +184,7 @@ export interface Harness {
   app: App
   client: Client
   opened: string[]
+  hooks: { onOpen: ((url: string) => Promise<void>) | null }
   logs: CallLogEntry[]
   stderr: string[]
   call: (
@@ -194,6 +199,7 @@ export async function createHarness(world: FakeWorld, env: Env = 'stage', store 
   const opened: string[] = []
   const logs: CallLogEntry[] = []
   const stderr: string[] = []
+  const hooks: { onOpen: ((url: string) => Promise<void>) | null } = { onOpen: null }
   const app = new App({
     env,
     fetch: world.fetch,
@@ -205,7 +211,7 @@ export async function createHarness(world: FakeWorld, env: Env = 'stage', store 
     },
     openBrowser: async (url) => {
       opened.push(url)
-      return true
+      await hooks.onOpen?.(url)
     }
   })
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
@@ -220,6 +226,7 @@ export async function createHarness(world: FakeWorld, env: Env = 'stage', store 
     app,
     client,
     opened,
+    hooks,
     logs,
     stderr,
     async call(name, args = {}) {

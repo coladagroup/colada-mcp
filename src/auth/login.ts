@@ -7,14 +7,13 @@ const LOGIN_TIMEOUT_MS = 30 * 60 * 1000
 
 export interface LoginDeps {
   fetch: typeof fetch
-  openBrowser: (url: string) => Promise<boolean>
+  openBrowser: (url: string) => Promise<void>
   log: (message: string) => void
   loginTimeoutMs?: number
 }
 
 export interface PendingLogin {
   url: string
-  opened: boolean
   close: () => void
 }
 
@@ -57,8 +56,8 @@ export async function startLogin(
     const error = url.searchParams.get('error')
     if (error !== null) {
       handled = true
-      res.once('finish', close)
       page(res, 200, `Login failed: ${escapeHtml(error)}. Call the tool again to retry.`)
+      close()
       return
     }
     if (code === null) {
@@ -66,10 +65,10 @@ export async function startLogin(
       return
     }
     handled = true
-    res.once('finish', close)
-    exchange(code).then((ok) =>
+    exchange(code).then((ok) => {
       page(res, 200, ok ? 'Login done. You can close this tab.' : 'Login failed. Call the tool again.')
-    )
+      close()
+    })
   })
 
   async function exchange(code: string): Promise<boolean> {
@@ -93,8 +92,7 @@ export async function startLogin(
   }
 
   let closed = false
-  const timer = setTimeout(() => close(), deps.loginTimeoutMs ?? LOGIN_TIMEOUT_MS)
-  timer.unref()
+  let timer: NodeJS.Timeout | undefined
 
   function close() {
     if (closed) return
@@ -110,6 +108,8 @@ export async function startLogin(
     server.listen(0, '127.0.0.1', () => resolve())
   })
   server.unref()
+  timer = setTimeout(close, deps.loginTimeoutMs ?? LOGIN_TIMEOUT_MS)
+  timer.unref()
   const { port } = server.address() as AddressInfo
   redirectUri = `http://127.0.0.1:${port}`
 
@@ -125,11 +125,10 @@ export async function startLogin(
   }).toString()
   const url = authUrl.toString()
 
-  let opened = false
   try {
-    opened = await deps.openBrowser(url)
-  } catch {
-    opened = false
+    await deps.openBrowser(url)
+  } catch (err) {
+    deps.log(`colada-mcp: cannot open the browser (${(err as Error).message})`)
   }
-  return { url, opened, close }
+  return { url, close }
 }

@@ -1,6 +1,6 @@
 import { messages, ToolError } from '../errors.js'
 import { decodeClaims, expiresAt, userOf } from './jwt.js'
-import { type LoginDeps, type PendingLogin, startLogin } from './login.js'
+import { type LoginDeps, startLogin } from './login.js'
 import { postToken, type TokenResult } from './tokenEndpoint.js'
 import type { TokenStore } from './tokenStore.js'
 
@@ -17,11 +17,16 @@ interface CachedToken {
   exp: number
 }
 
+interface LoginAttempt {
+  close: () => void
+}
+
 export class RealmSession {
   private readonly tokens = new Map<string, CachedToken>()
   private readonly inflight = new Map<string, Promise<string>>()
   private queue: Promise<unknown> = Promise.resolve()
-  private login: PendingLogin | null = null
+  private login: LoginAttempt | null = null
+  private generation = 0
   private lastUser: string | null = null
   private readonly endListeners: Array<() => void> = []
 
@@ -52,6 +57,7 @@ export class RealmSession {
   }
 
   async end(): Promise<never> {
+    if (this.login) throw new ToolError(messages.loginInProgress())
     await this.clear()
     return this.beginLogin()
   }
@@ -66,7 +72,12 @@ export class RealmSession {
   }
 
   private async clear() {
+    this.forget()
     await this.deps.store.delete(this.host)
+  }
+
+  private forget() {
+    this.generation++
     this.tokens.clear()
     for (const listener of this.endListeners) listener()
   }
@@ -89,24 +100,28 @@ export class RealmSession {
   }
 
   private async requestToken(key: string, workspaceId: string | null): Promise<string> {
-    const refreshToken = await this.deps.store.get(this.host)
-    if (!refreshToken) return this.beginLogin()
-
-    const params: Record<string, string> = { grant_type: 'refresh_token', refresh_token: refreshToken }
-    if (workspaceId !== null) params.workspace_id = workspaceId
-
-    let result: TokenResult
-    try {
-      result = await postToken(this.deps.fetch, this.host, this.realm, params)
-    } catch {
-      throw new ToolError(messages.keycloakUnreachable(this.host, null))
+    if (this.login) throw new ToolError(messages.loginInProgress())
+    const generation = this.generation
+    let refreshToken = await this.deps.store.get(this.host)
+    if (!refreshToken) {
+      this.forget()
+      return this.beginLogin()
     }
-    if (result.status === 400 && result.error === 'invalid_grant') return this.end()
+
+    let result = await this.refresh(refreshToken, workspaceId)
+    if (result.status === 400 && result.error === 'invalid_grant') {
+      const newer = await this.deps.store.get(this.host)
+      if (!newer || newer === refreshToken) return this.end()
+      refreshToken = newer
+      result = await this.refresh(refreshToken, workspaceId)
+      if (result.status === 400 && result.error === 'invalid_grant') return this.end()
+    }
     if (result.status !== 200 || !result.accessToken) {
       throw new ToolError(messages.keycloakUnreachable(this.host, result.status))
     }
+    if (generation !== this.generation) throw new ToolError(messages.loggedOut())
 
-    await this.accept(result)
+    await this.accept(result, generation)
     const claims = decodeClaims(result.accessToken)
     if (workspaceId !== null && claims.COLADA_WORKSPACE_ID !== workspaceId) {
       throw new ToolError(messages.noAccess(workspaceId, this.realm))
@@ -115,28 +130,59 @@ export class RealmSession {
     return result.accessToken
   }
 
-  private async accept(result: TokenResult) {
-    if (result.refreshToken) await this.deps.store.set(this.host, result.refreshToken)
+  private async refresh(refreshToken: string, workspaceId: string | null): Promise<TokenResult> {
+    const params: Record<string, string> = { grant_type: 'refresh_token', refresh_token: refreshToken }
+    if (workspaceId !== null) params.workspace_id = workspaceId
+    try {
+      return await postToken(this.deps.fetch, this.host, this.realm, params)
+    } catch {
+      throw new ToolError(messages.keycloakUnreachable(this.host, null))
+    }
+  }
+
+  private async accept(result: TokenResult, generation: number) {
+    if (result.refreshToken) {
+      await this.deps.store.set(this.host, result.refreshToken)
+      if (generation !== this.generation) {
+        await this.deps.store.delete(this.host)
+        throw new ToolError(messages.loggedOut())
+      }
+    }
     if (result.accessToken) this.lastUser = userOf(decodeClaims(result.accessToken))
   }
 
   private async beginLogin(): Promise<never> {
     if (this.login) throw new ToolError(messages.loginInProgress())
-    const login = await startLogin(
-      this.host,
-      this.realm,
-      this.deps,
-      async (result) => {
-        await this.accept(result)
-        if (result.accessToken) {
-          this.tokens.set(BASE_KEY, { token: result.accessToken, exp: expiresAt(decodeClaims(result.accessToken)) })
+    const generation = this.generation
+    const attempt: LoginAttempt = { close: () => undefined }
+    this.login = attempt
+    const active = () => this.login === attempt && this.generation === generation
+    let login: Awaited<ReturnType<typeof startLogin>>
+    try {
+      login = await startLogin(
+        this.host,
+        this.realm,
+        this.deps,
+        async (result) => {
+          if (!active()) return
+          await this.accept(result, generation)
+          if (result.accessToken) {
+            this.tokens.set(BASE_KEY, { token: result.accessToken, exp: expiresAt(decodeClaims(result.accessToken)) })
+          }
+        },
+        () => {
+          if (this.login === attempt) this.login = null
         }
-      },
-      () => {
-        if (this.login === login) this.login = null
-      }
-    )
-    this.login = login
-    throw new ToolError(messages.loginOpened(this.realm, this.host, login.opened ? undefined : login.url))
+      )
+    } catch (err) {
+      if (this.login === attempt) this.login = null
+      throw err
+    }
+    if (this.generation !== generation) {
+      login.close()
+      throw new ToolError(messages.loggedOut())
+    }
+    attempt.close = login.close
+    throw new ToolError(messages.loginOpened(this.realm, this.host, login.url))
   }
 }

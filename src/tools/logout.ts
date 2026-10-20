@@ -14,7 +14,7 @@ export function registerLogout(server: McpServer, app: App) {
       annotations: { readOnlyHint: false, destructiveHint: false }
     },
     (params) =>
-      runTool(app, 'logout', params, params.realm ?? null, async (ctx) => {
+      runTool(app, 'logout', params, params.realm || null, async (ctx) => {
         const realms = params.realm ? [params.realm] : app.availableRealms()
         let user: string | null = null
         for (const realm of realms) {

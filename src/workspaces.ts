@@ -50,8 +50,9 @@ export class WorkspaceDirectory {
     if (UUID.test(input)) {
       return { id: input, name: this.cache?.find((w) => w.id === input)?.name ?? null }
     }
+    const fromCache = this.cache !== null
     let matches = (await this.list(state)).filter((w) => w.name === input)
-    if (matches.length === 0) matches = (await this.list(state, true)).filter((w) => w.name === input)
+    if (matches.length === 0 && fromCache) matches = (await this.list(state, true)).filter((w) => w.name === input)
     const [match] = matches
     if (match && matches.length === 1) return { id: match.id, name: match.name }
     if (matches.length === 0) {

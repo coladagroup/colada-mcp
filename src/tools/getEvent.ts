@@ -16,7 +16,7 @@ export function registerGetEvent(server: McpServer, app: App) {
       annotations: { readOnlyHint: true }
     },
     (params) => {
-      const realm = params.realm ?? 'default'
+      const realm = params.realm || 'default'
       return runTool(app, 'get_event', params, realm, async (ctx) => {
         const { session, directory } = app.realm(realm)
         if (!EVENT_ID.test(params.eventId)) throw new ToolError(messages.invalidId('eventId', params.eventId))
