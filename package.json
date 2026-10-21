@@ -1,14 +1,27 @@
 {
   "name": "@colada/mcp",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Local read-only MCP server for Colada support",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coladagroup/colada-mcp.git"
+  },
   "type": "module",
   "bin": {
     "colada-mcp": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
