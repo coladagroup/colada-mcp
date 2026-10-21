@@ -1,5 +1,5 @@
 {
-  "name": "@colada/mcp",
+  "name": "@colada-ag/mcp",
   "version": "0.1.0",
   "description": "Local read-only MCP server for Colada support",
   "license": "UNLICENSED",

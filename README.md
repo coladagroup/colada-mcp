@@ -17,7 +17,7 @@ Open Settings → Developer → Edit Config and add this to `claude_desktop_conf
   "mcpServers": {
     "colada": {
       "command": "npx",
-      "args": ["-y", "@colada/mcp@0.1.0"],
+      "args": ["-y", "@colada-ag/mcp@0.1.0"],
       "env": { "COLADA_ENV": "stage" }
     }
   }
@@ -29,13 +29,7 @@ Restart Claude Desktop.
 ### Claude Code
 
 ```bash
-claude mcp add colada --env COLADA_ENV=stage -- npx -y @colada/mcp@0.1.0
-```
-
-On a Colada developer laptop, `~/.npmrc` may send the `@colada` scope to the internal Artifact Registry. Then `npx` cannot find the package. Add the public registry for this command:
-
-```bash
-claude mcp add colada --env COLADA_ENV=stage -- npx -y --@colada:registry=https://registry.npmjs.org @colada/mcp@0.1.0
+claude mcp add colada --env COLADA_ENV=stage -- npx -y @colada-ag/mcp@0.1.0
 ```
 
 ## Environment and realms
