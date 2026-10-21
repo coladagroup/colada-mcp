@@ -51,7 +51,7 @@ export interface Recorded {
   redirect: RequestRedirect | undefined
 }
 
-function json(status: number, body: unknown, headers: Record<string, string> = {}) {
+export function json(status: number, body: unknown, headers: Record<string, string> = {}) {
   return new Response(body === undefined ? '' : JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json', ...headers }
@@ -66,7 +66,7 @@ export class FakeWorld {
   readonly realms = new Map<string, FakeRealm>()
   readonly events = new Map<string, Map<string, unknown>>()
   readonly backendStatus = new Map<string, number>()
-  readonly backendRaw = new Map<string, () => Response>()
+  readonly backendRaw = new Map<string, (url: URL, headers: Record<string, string>) => Response>()
   backendDelayMs = 0
   tokenDelayMs = 0
   private counter = 0
@@ -132,7 +132,7 @@ export class FakeWorld {
       return this.token(url.host, realm, form ?? new URLSearchParams())
     }
     if (this.backendDelayMs) await new Promise((r) => setTimeout(r, this.backendDelayMs))
-    return this.backend(url, realm, headers.authorization ?? '')
+    return this.backend(url, realm, headers)
   }
 
   private token(host: string, realm: FakeRealm, form: URLSearchParams) {
@@ -159,15 +159,15 @@ export class FakeWorld {
     return json(200, body)
   }
 
-  private backend(url: URL, realm: FakeRealm, authorization: string) {
-    const token = authorization.replace(/^Bearer /, '')
+  private backend(url: URL, realm: FakeRealm, headers: Record<string, string>) {
+    const token = (headers.authorization ?? '').replace(/^Bearer /, '')
     if (!this.issued.includes(token)) return json(401, undefined)
     const claims = claimsOf(token)
     if ((claims.exp as number) <= this.now) return json(401, undefined)
     const forced = this.backendStatus.get(url.pathname)
     if (forced) return json(forced, undefined)
     const raw = this.backendRaw.get(url.pathname)
-    if (raw) return raw()
+    if (raw) return raw(url, headers)
     if (url.pathname === '/_gw/s-workspaces/api/workspaces') return json(200, realm.workspaces)
     const match = url.pathname.match(/^\/_gw\/s-events\/api\/events\/([^/]+)$/)
     if (match) {
