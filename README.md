@@ -32,6 +32,27 @@ Restart Claude Desktop.
 claude mcp add colada --env COLADA_ENV=stage -- npx -y @colada-ag/mcp@0.1.0
 ```
 
+### Cursor
+
+Open Cursor Settings → MCP → Add new global MCP server, or edit `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "colada": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@colada-ag/mcp@0.1.0"],
+      "env": { "COLADA_ENV": "stage" }
+    }
+  }
+}
+```
+
+Use the global `~/.cursor/mcp.json`, not a project `.cursor/mcp.json`. In Cursor Settings → MCP, `colada` must be enabled and show 7 tools. If it fails with `spawn npx ENOENT`, Cursor does not find `npx` (for example with nvm): put the full path from `which npx` into `command`.
+
+Keep Privacy Mode on (Settings → General → Privacy) and do not turn on auto-run for these tools.
+
 ## Environment and realms
 
 `COLADA_ENV` is `stage` (the default, also when empty) or `prod`. Any other value stops the server with an error.
@@ -61,7 +82,7 @@ Every tool call writes one line to `~/.colada-mcp/calls.log`: time, realm, user,
 
 ## Data and privacy
 
-The server only reads data that your Colada user can see. But every tool answer becomes part of the AI chat and is sent to Anthropic. Ask only for the customer data you need.
+The server only reads data that your Colada user can see. But every tool answer becomes part of the AI chat and is sent to Anthropic (in Cursor: to Cursor and the model provider selected there). Ask only for the customer data you need.
 
 ## Local development
 
