@@ -16,5 +16,8 @@ export const messages = {
   failed: (path: string, status: number | null) => `GET ${path} failed (${status ?? 'no response'}).`,
   keycloakUnreachable: (host: string, status: number | null) =>
     `Keycloak at ${host} is not reachable (HTTP ${status ?? 'no response'}).`,
+  keycloakRefused: (host: string, status: number) => `Keycloak at ${host} refused the token request (HTTP ${status}).`,
+  logoutFailed: (realms: string[]) =>
+    `Could not remove the stored session of realm ${realms.join(', ')} from the OS keyring. Call logout again.`,
   noWorkspace: (realm: string) => `You have no workspace in realm ${realm}.`
 }

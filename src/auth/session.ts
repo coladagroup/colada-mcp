@@ -116,6 +116,9 @@ export class RealmSession {
       result = await this.refresh(refreshToken, workspaceId)
       if (result.status === 400 && result.error === 'invalid_grant') return this.end()
     }
+    if (result.status >= 400 && result.status < 500) {
+      throw new ToolError(messages.keycloakRefused(this.host, result.status))
+    }
     if (result.status !== 200 || !result.accessToken) {
       throw new ToolError(messages.keycloakUnreachable(this.host, result.status))
     }

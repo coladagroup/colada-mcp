@@ -293,6 +293,57 @@ describe('id checks', () => {
 })
 
 describe('all tools', () => {
+  const WORKSPACES_PATH = '/_gw/s-workspaces/api/workspaces'
+  const backendTools: Array<[string, Record<string, unknown>, string]> = [
+    ['list_workspaces', {}, WORKSPACES_PATH],
+    ['list_events', { workspace: 'Alpha' }, EVENTS_PATH],
+    ['get_event', { workspace: 'Alpha', eventId: EVENT_A }, `/_gw/s-events/api/events/${EVENT_A}`],
+    ['list_email_templates', { workspace: 'Alpha', eventId: EVENT_A }, TEMPLATES_PATH],
+    ['get_email_template', { workspace: 'Alpha', eventId: EVENT_A, templateId: TEMPLATE_ID }, TEMPLATE_PATH],
+    ['get_registration_form', { workspace: 'Alpha', eventId: EVENT_A }, FORM_PATH]
+  ]
+  const workspaceOf = (tool: string) => (tool === 'list_workspaces' ? null : { id: WS_A, name: 'Alpha' })
+
+  it('AC5: every tool answer carries realm, user, and workspace id and name', async () => {
+    const h = await setup()
+    h.world.events.set(WS_A, new Map([[EVENT_A, { uid: EVENT_A }]]))
+    h.world.backendRaw.set(EVENTS_PATH, paged('events', events(1)))
+    h.world.backendRaw.set(TEMPLATES_PATH, paged('emailtemplates', templates(1)))
+    h.world.backendRaw.set(TEMPLATE_PATH, () => json(200, { id: TEMPLATE_ID }))
+    h.world.backendRaw.set(FORM_PATH, () => json(200, { status: 'PUBLISHED' }))
+    for (const [tool, args] of backendTools) {
+      const result = await h.call(tool, args)
+      expect(result.isError, tool).toBe(false)
+      expect(result.body, tool).toMatchObject({ realm: 'default', user: 'frank', workspace: workspaceOf(tool) })
+    }
+    const logout = await h.call('logout', { realm: 'default' })
+    expect(logout.body).toMatchObject({ realm: 'default', user: 'frank', workspace: null })
+  })
+
+  it.each(backendTools)('AC5/AC11: 403 of %s names the path and keeps the envelope', async (tool, args, path) => {
+    const h = await setup()
+    h.world.backendStatus.set(path, 403)
+    const result = await h.call(tool, args)
+    expect(result.isError).toBe(true)
+    expect(result.body).toEqual({
+      realm: 'default',
+      user: 'frank',
+      workspace: workspaceOf(tool),
+      error: `GET ${path} was refused (403): your role lacks access to this endpoint. Ask an admin for the permission.`
+    })
+  })
+
+  it.each([...backendTools.map(([tool]) => tool), 'logout'])(
+    'AC18: %s with a dedicated realm on stage gives the clear error, opens no login and sends no request',
+    async (tool) => {
+      const h = await setup()
+      const result = await h.call(tool, { realm: 'lidl', workspace: WS_A, eventId: EVENT_A, templateId: TEMPLATE_ID })
+      expect(result.body.error).toBe('Realm lidl is not available on stage. Use default, or run with COLADA_ENV=prod.')
+      expect(h.opened).toHaveLength(0)
+      expect(h.world.requests).toHaveLength(0)
+    }
+  )
+
   it('tools/list has the six read tools and logout', async () => {
     const h = await setup()
     const names = (await h.client.listTools()).tools.map((t) => t.name).sort()

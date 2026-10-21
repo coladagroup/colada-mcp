@@ -7,6 +7,7 @@ import {
   FakeStore,
   FakeWorld,
   type Harness,
+  json,
   WS_A,
   WS_B,
   WS_FOREIGN,
@@ -207,6 +208,18 @@ describe('login and session', () => {
     const result = await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
     expect(result.body.error).toBe(`Keycloak at ${STAGE} is not reachable (HTTP 503).`)
     expect(h.store.values.has(STAGE)).toBe(true)
+  })
+
+  it('session end: a Keycloak 4xx other than invalid_grant says the request was refused and keeps the session', async () => {
+    const world = new FakeWorld()
+    const h = await setup({ world })
+    const original = world.fetch
+    ;(h.app.deps as { fetch: typeof fetch }).fetch = async (input, init) =>
+      String(input).endsWith('/token') ? json(400, { error: 'invalid_client' }) : original(input, init)
+    const result = await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    expect(result.body.error).toBe(`Keycloak at ${STAGE} refused the token request (HTTP 400).`)
+    expect(h.store.values.has(STAGE)).toBe(true)
+    expect(h.opened).toHaveLength(0)
   })
 })
 
@@ -467,10 +480,44 @@ describe('realms', () => {
     expect(h.store.values.has(LIDL)).toBe(false)
     expect(h.store.values.has(PROD)).toBe(true)
     expect((await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })).isError).toBe(false)
+    const lidlBackendCalls = h.world.backendRequests(LIDL).length
+    const lidlAgain = await h.call('get_event', { realm: 'lidl', eventId: EVENT_A })
+    expect(lidlAgain.body.error).toMatch(/^Login opened in your browser for realm lidl /)
+    expect(h.world.backendRequests(LIDL)).toHaveLength(lidlBackendCalls)
 
     const allOut = await h.call('logout')
     expect(allOut.body.message).toBe('Logged out from all realms.')
     expect(h.store.values.size).toBe(0)
+    const backendCalls = h.world.backendRequests().length
+    for (const args of [{ workspace: WS_A }, { realm: 'lidl' }]) {
+      const again = await h.call('get_event', { ...args, eventId: EVENT_A })
+      expect(again.body.error).toMatch(/^Login opened in your browser /)
+    }
+    expect(h.world.backendRequests()).toHaveLength(backendCalls)
+  })
+
+  it('AC17: logout without realm ends every other realm when the keyring fails for one', async () => {
+    const h = await prodWithLidl()
+    h.world.seedRefreshToken(LIDL, h.store)
+    await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    await h.call('get_event', { realm: 'lidl', eventId: EVENT_A })
+    const remove = h.store.delete.bind(h.store)
+    h.store.delete = async (account) => {
+      if (account === PROD) throw new Error('store locked')
+      await remove(account)
+    }
+
+    const result = await h.call('logout')
+    h.store.delete = remove
+    expect(result.isError).toBe(true)
+    expect(result.body.error).toBe(
+      'Could not remove the stored session of realm default from the OS keyring. Call logout again.'
+    )
+    expect(h.store.values.has(LIDL)).toBe(false)
+    const lidlBackendCalls = h.world.backendRequests(LIDL).length
+    const lidl = await h.call('get_event', { realm: 'lidl', eventId: EVENT_A })
+    expect(lidl.body.error).toMatch(/^Login opened in your browser for realm lidl /)
+    expect(h.world.backendRequests(LIDL)).toHaveLength(lidlBackendCalls)
   })
 
   it('D28: a rotated refresh token replaces the stored one; token requests of one realm run one at a time', async () => {
