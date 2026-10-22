@@ -4,6 +4,7 @@ import {
   createHarness,
   EVENT_A,
   EVENT_B,
+  eventPath,
   FakeStore,
   FakeWorld,
   type Harness,
@@ -79,14 +80,14 @@ describe('login state', () => {
     world.backendStatus.set(`/_gw/s-events/api/events/${EVENT_B}`, 401)
 
     await Promise.all([
-      h.call('get_event', { workspace: WS_A, eventId: EVENT_A }),
-      h.call('get_event', { workspace: WS_B, eventId: EVENT_B })
+      h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) }),
+      h.call('api_get', { workspace: WS_B, ...eventPath(EVENT_B) })
     ])
     expect(h.opened).toHaveLength(1)
 
     world.backendStatus.clear()
     await h.completeLogin()
-    const retry = await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    const retry = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     expect(retry.isError).toBe(false)
   })
 
@@ -115,14 +116,14 @@ describe('logout races', () => {
     const h = await harness(world)
     world.tokenDelayMs = 40
 
-    const running = h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    const running = h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     await sleep(10)
     await h.call('logout')
     await running
     world.tokenDelayMs = 0
 
     expect(h.store.values.has(STAGE)).toBe(false)
-    const next = await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    const next = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     expect(next.body.error).toMatch(/^Login opened in your browser/)
   })
 
@@ -182,10 +183,10 @@ describe('keyring entry removed outside this process', () => {
   it('drops cached tokens and the workspace list before the new login', async () => {
     const world = stageWorld()
     const h = await harness(world)
-    await h.call('get_event', { workspace: 'Alpha', eventId: EVENT_A })
+    await h.call('api_get', { workspace: 'Alpha', ...eventPath(EVENT_A) })
     h.store.values.delete(STAGE)
 
-    const login = await h.call('get_event', { workspace: WS_B, eventId: EVENT_B })
+    const login = await h.call('api_get', { workspace: WS_B, ...eventPath(EVENT_B) })
     expect(login.body.error).toMatch(/^Login opened in your browser/)
     const realm = world.realms.get(STAGE)
     if (realm) realm.user = 'bob'
@@ -193,7 +194,7 @@ describe('keyring entry removed outside this process', () => {
 
     const tokenRequestsBefore = world.tokenRequests().length
     const listRequestsBefore = world.backendRequests().filter((r) => r.url.pathname.endsWith('/workspaces')).length
-    const result = await h.call('get_event', { workspace: 'Alpha', eventId: EVENT_A })
+    const result = await h.call('api_get', { workspace: 'Alpha', ...eventPath(EVENT_A) })
 
     expect(result.body.user).toBe('bob')
     expect(world.tokenRequests().length).toBe(tokenRequestsBefore + 1)
@@ -207,10 +208,13 @@ describe('backend responses', () => {
   it('a 2xx answer with a broken JSON body is an error, not null data', async () => {
     const world = stageWorld()
     const h = await harness(world)
-    world.backendRaw.set(`/_gw/s-events/api/events/${EVENT_A}`, () => new Response('{"uid":', { status: 200 }))
-    const result = await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    world.backendRaw.set(
+      `/_gw/s-events/api/events/${EVENT_A}`,
+      () => new Response('{"uid":', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    )
+    const result = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     expect(result.isError).toBe(true)
-    expect(result.body.error).toBe(`GET /_gw/s-events/api/events/${EVENT_A} failed (200).`)
+    expect(result.body.error).toBe(`GET /_gw/s-events/api/events/${EVENT_A} returned invalid JSON (200).`)
   })
 
   it('a 2xx answer whose body stream fails is an error', async () => {
@@ -237,7 +241,7 @@ describe('backend responses', () => {
     const h = await harness(stageWorld(), { loggedIn: false })
     await h.call('list_workspaces')
     await h.completeLogin()
-    await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     expect(h.world.requests.length).toBeGreaterThan(2)
     for (const r of h.world.requests) expect(r.redirect).toBe('error')
   })
@@ -248,15 +252,15 @@ describe('inputs', () => {
     const world = stageWorld()
     world.addRealm(CLIENT, { name: 'client', user: 'frank-client' })
     const h = await harness(world, { hosts: [STAGE, CLIENT] })
-    const event = await h.call('get_event', { realm: '', workspace: WS_A, eventId: EVENT_A })
-    expect(event.body).toMatchObject({ realm: 'default', event: { uid: EVENT_A } })
+    const event = await h.call('api_get', { realm: '', workspace: WS_A, ...eventPath(EVENT_A) })
+    expect(event.body).toMatchObject({ realm: 'default', body: { uid: EVENT_A } })
     const logout = await h.call('logout', { realm: '' })
     expect(logout.body).toMatchObject({ realm: null, message: 'Logged out from all realms.' })
   })
 
   it('an unknown name in a fresh process fetches the workspace list once', async () => {
     const h = await harness(stageWorld())
-    await h.call('get_event', { workspace: 'Nope', eventId: EVENT_A })
+    await h.call('api_get', { workspace: 'Nope', ...eventPath(EVENT_A) })
     expect(h.world.backendRequests().filter((r) => r.url.pathname.endsWith('/workspaces'))).toHaveLength(1)
   })
 

@@ -4,6 +4,7 @@ import {
   createHarness,
   EVENT_A,
   EVENT_B,
+  eventPath,
   FakeStore,
   FakeWorld,
   type Harness,
@@ -66,7 +67,7 @@ describe('login and session', () => {
   it('AC1: a second call during the login opens no new tab', async () => {
     const h = await setup({ loggedIn: false })
     await h.call('list_workspaces')
-    const second = await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    const second = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
 
     expect(second.body.error).toBe('Login is in progress in your browser. Finish it, then call the tool again.')
     expect(h.opened).toHaveLength(1)
@@ -125,11 +126,11 @@ describe('login and session', () => {
 
   it('AC2: an expiring access token is refreshed once and the call completes', async () => {
     const h = await setup()
-    await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     expect(h.world.tokenRequests()).toHaveLength(1)
 
     h.world.now += h.world.tokenTtl - 29
-    const result = await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    const result = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
 
     expect(result.isError).toBe(false)
     expect(h.world.tokenRequests()).toHaveLength(2)
@@ -138,17 +139,17 @@ describe('login and session', () => {
 
   it('AC2: a token with more than 30 s left is reused', async () => {
     const h = await setup()
-    await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     h.world.now += h.world.tokenTtl - 31
-    await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     expect(h.world.tokenRequests()).toHaveLength(1)
   })
 
   it('AC2: a backend 401 renews the token and retries once', async () => {
     const h = await setup()
-    await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     h.world.issued.length = 0
-    const result = await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    const result = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     expect(result.isError).toBe(false)
     expect(h.world.tokenRequests()).toHaveLength(2)
   })
@@ -173,7 +174,7 @@ describe('login and session', () => {
 
   it('AC4: logout deletes the keyring entry and the tokens; the next call starts the login', async () => {
     const h = await setup()
-    await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     const result = await h.call('logout')
 
     expect(result.body).toEqual({
@@ -185,7 +186,7 @@ describe('login and session', () => {
     expect(h.store.values.has(STAGE)).toBe(false)
 
     const backendBefore = h.world.backendRequests().length
-    const next = await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    const next = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     expect(next.body.error).toMatch(/^Login opened in your browser/)
     expect(h.opened).toHaveLength(1)
     expect(h.world.backendRequests()).toHaveLength(backendBefore)
@@ -194,7 +195,7 @@ describe('login and session', () => {
   it('session end: invalid_grant deletes the entry and starts the login without leaking error_description', async () => {
     const h = await setup()
     h.world.realms.get(STAGE)?.validRefreshTokens.clear()
-    const result = await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    const result = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
 
     expect(result.body.error).toMatch(/^Login opened in your browser for realm default/)
     expect(result.text).not.toContain('SECRETDESC')
@@ -208,7 +209,7 @@ describe('login and session', () => {
     const original = world.fetch
     ;(h.app.deps as { fetch: typeof fetch }).fetch = async (input, init) =>
       String(input).endsWith('/token') ? new Response('', { status: 503 }) : original(input, init)
-    const result = await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    const result = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     expect(result.body.error).toBe(`Keycloak at ${STAGE} is not reachable (HTTP 503).`)
     expect(h.store.values.has(STAGE)).toBe(true)
   })
@@ -219,7 +220,7 @@ describe('login and session', () => {
     const original = world.fetch
     ;(h.app.deps as { fetch: typeof fetch }).fetch = async (input, init) =>
       String(input).endsWith('/token') ? json(400, { error: 'invalid_client' }) : original(input, init)
-    const result = await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    const result = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     expect(result.body.error).toBe(`Keycloak at ${STAGE} refused the token request (HTTP 400).`)
     expect(h.store.values.has(STAGE)).toBe(true)
     expect(h.opened).toHaveLength(0)
@@ -230,13 +231,13 @@ describe('workspaces', () => {
   it('AC5: every tool answer carries realm, user and workspace', async () => {
     const h = await setup()
     const list = await h.call('list_workspaces')
-    const event = await h.call('get_event', { workspace: 'Alpha', eventId: EVENT_A })
-    const failed = await h.call('get_event', { workspace: WS_A, eventId: 'bad id' })
+    const event = await h.call('api_get', { workspace: 'Alpha', ...eventPath(EVENT_A) })
+    const failed = await h.call('api_get', { workspace: WS_A, ...eventPath('eeeeeeee-0000-0000-0000-0000000000ff') })
     const logout = await h.call('logout', { realm: 'default' })
 
     expect(list.body).toMatchObject({ realm: 'default', user: 'frank', workspace: null })
     expect(event.body).toMatchObject({ realm: 'default', user: 'frank', workspace: { id: WS_A, name: 'Alpha' } })
-    expect(failed.body).toMatchObject({ realm: 'default', user: 'frank', workspace: null })
+    expect(failed.body).toMatchObject({ realm: 'default', user: 'frank', workspace: { id: WS_A, name: 'Alpha' } })
     expect(Object.keys(failed.body)).toEqual(['realm', 'user', 'workspace', 'error'])
     expect(logout.body).toMatchObject({ realm: 'default', user: 'frank', workspace: null })
   })
@@ -255,7 +256,7 @@ describe('workspaces', () => {
 
   it('AC5b: the backend request uses the token whose claim equals W, sent as a form parameter', async () => {
     const h = await setup()
-    await h.call('get_event', { workspace: WS_B, eventId: EVENT_B })
+    await h.call('api_get', { workspace: WS_B, ...eventPath(EVENT_B) })
 
     const tokenRequest = h.world.tokenRequests()[0]
     expect(tokenRequest?.form?.get('workspace_id')).toBe(WS_B)
@@ -267,7 +268,7 @@ describe('workspaces', () => {
 
   it('AC5c: another claim gives "no access" and sends no backend request', async () => {
     const h = await setup()
-    const result = await h.call('get_event', { workspace: WS_FOREIGN, eventId: EVENT_A })
+    const result = await h.call('api_get', { workspace: WS_FOREIGN, ...eventPath(EVENT_A) })
 
     expect(result.isError).toBe(true)
     expect(result.body.error).toBe(
@@ -281,7 +282,7 @@ describe('workspaces', () => {
     const world = new FakeWorld()
     world.addRealm(STAGE, { user: 'frank', homeWorkspace: undefined, members: [], workspaces: [] })
     const h = await setup({ world })
-    const result = await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    const result = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     expect(result.body.error).toMatch(/^No access to workspace/)
     expect(h.world.backendRequests()).toHaveLength(0)
   })
@@ -295,12 +296,12 @@ describe('workspaces', () => {
     })
     const h = await setup({ world })
 
-    const none = await h.call('get_event', { workspace: 'Nope', eventId: EVENT_A })
+    const none = await h.call('api_get', { workspace: 'Nope', ...eventPath(EVENT_A) })
     expect(none.body.error).toBe(
       `Workspace "Nope" matches no workspace. Your workspaces:\n${WS_A} — Same\n${WS_B} — Same`
     )
 
-    const two = await h.call('get_event', { workspace: 'Same', eventId: EVENT_A })
+    const two = await h.call('api_get', { workspace: 'Same', ...eventPath(EVENT_A) })
     expect(two.body.error).toBe(`Workspace "Same" matches 2 workspaces:\n${WS_A} — Same\n${WS_B} — Same`)
 
     expect(h.world.backendRequests().filter((r) => r.url.pathname.includes('/s-events/'))).toHaveLength(0)
@@ -310,12 +311,12 @@ describe('workspaces', () => {
     const single = new FakeWorld()
     single.addRealm(STAGE, { user: 'frank', members: [WS_A], workspaces: [workspace(WS_A, 'Alpha')] })
     const one = await setup({ world: single })
-    const ok = await one.call('get_event', { eventId: EVENT_A })
+    const ok = await one.call('api_get', { ...eventPath(EVENT_A) })
     expect(ok.isError).toBe(false)
     expect(ok.body.workspace).toEqual({ id: WS_A, name: 'Alpha' })
 
     const many = await setup()
-    const fail = await many.call('get_event', { eventId: EVENT_A })
+    const fail = await many.call('api_get', { ...eventPath(EVENT_A) })
     expect(fail.body.error).toBe(`Pass "workspace": you have 2 workspaces:\n${WS_A} — Alpha\n${WS_B} — Beta`)
   })
 
@@ -324,12 +325,12 @@ describe('workspaces', () => {
     h.world.tokenDelayMs = 20
     h.world.backendDelayMs = 20
     const [a, b] = await Promise.all([
-      h.call('get_event', { workspace: WS_A, eventId: EVENT_A }),
-      h.call('get_event', { workspace: WS_B, eventId: EVENT_B })
+      h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) }),
+      h.call('api_get', { workspace: WS_B, ...eventPath(EVENT_B) })
     ])
 
-    expect(a.body).toMatchObject({ workspace: { id: WS_A }, event: { uid: EVENT_A } })
-    expect(b.body).toMatchObject({ workspace: { id: WS_B }, event: { uid: EVENT_B } })
+    expect(a.body).toMatchObject({ workspace: { id: WS_A }, body: { uid: EVENT_A } })
+    expect(b.body).toMatchObject({ workspace: { id: WS_B }, body: { uid: EVENT_B } })
     expect(h.world.tokenRequests().map((r) => r.form?.get('workspace_id'))).toEqual([WS_A, WS_B])
     const claims = h.world
       .backendRequests()
@@ -341,49 +342,55 @@ describe('workspaces', () => {
     const h = await setup()
     h.world.tokenDelayMs = 20
     await Promise.all([
-      h.call('get_event', { workspace: WS_A, eventId: EVENT_A }),
-      h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+      h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) }),
+      h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     ])
     expect(h.world.tokenRequests()).toHaveLength(1)
   })
 })
 
-describe('get_event and backend errors', () => {
-  it('AC10: get_event returns the body unchanged', async () => {
+describe('api_get and backend errors', () => {
+  it('AC19: api_get returns the status and the body unchanged', async () => {
     const h = await setup()
-    const result = await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
-    expect(result.body.event).toEqual({ uid: EVENT_A, title: 'Gala A', nested: { x: [1, 2] } })
+    const result = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
+    expect(result.body.status).toBe(200)
+    expect(result.body.body).toEqual({ uid: EVENT_A, title: 'Gala A', nested: { x: [1, 2] } })
     expect(h.world.backendRequests()[0]?.url.pathname).toBe(`/_gw/s-events/api/events/${EVENT_A}`)
   })
 
   it('AC11: 403 names the refused path', async () => {
     const h = await setup()
     h.world.backendStatus.set(`/_gw/s-events/api/events/${EVENT_A}`, 403)
-    const result = await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    const result = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     expect(result.body.error).toBe(
       `GET /_gw/s-events/api/events/${EVENT_A} was refused (403): your role lacks access to this endpoint. Ask an admin for the permission.`
     )
     expect(h.logs.at(-1)?.httpStatus).toBe(403)
   })
 
-  it('AC12: 404 names the event id', async () => {
+  it('404 names the path and the workspace', async () => {
     const h = await setup()
     const missing = 'eeeeeeee-0000-0000-0000-0000000000ff'
-    const result = await h.call('get_event', { workspace: WS_A, eventId: missing })
-    expect(result.body.error).toBe(`Event ${missing} not found in workspace ${WS_A}.`)
+    const result = await h.call('api_get', { workspace: WS_A, ...eventPath(missing) })
+    expect(result.body.error).toBe(
+      `GET /_gw/s-events/api/events/${missing} returned 404 in workspace ${WS_A}: the object or the route does not exist. Check the path with get_api_doc.`
+    )
   })
 
-  it('invalid event id sends no request', async () => {
+  it('a refused path sends no request and opens no realm', async () => {
     const h = await setup()
-    const result = await h.call('get_event', { workspace: WS_A, eventId: '../workspaces' })
-    expect(result.body.error).toBe('eventId "../workspaces" is not a valid Colada id.')
+    const result = await h.call('api_get', { workspace: WS_A, ...eventPath('../workspaces') })
+    expect(result.body.error).toBe(
+      'Path "/api/events/../workspaces" is not allowed: it must not contain ".." or "//". Put query parameters in "query".'
+    )
+    expect(h.world.configRequests).toHaveLength(0)
     expect(h.world.requests).toHaveLength(0)
   })
 
   it('AC13: every backend request is a GET with Accept-Language en', async () => {
     const h = await setup()
     await h.call('list_workspaces')
-    await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
+    await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     for (const request of h.world.backendRequests()) {
       expect(request.method).toBe('GET')
       expect(request.headers['accept-language']).toBe('en')
@@ -391,27 +398,35 @@ describe('get_event and backend errors', () => {
     }
   })
 
-  it('AC14: one log line per call with the six fields and no body', async () => {
+  it('AC31: one log line per generic call with the CONTRACT §7 keys and no body', async () => {
     const h = await setup()
-    await h.call('get_event', { workspace: 'Alpha', eventId: EVENT_A })
+    await h.call('api_get', { workspace: 'Alpha', ...eventPath(EVENT_A) })
 
     expect(h.logs).toHaveLength(1)
     const [entry] = h.logs
-    expect(Object.keys(entry ?? {}).sort()).toEqual([
-      'httpStatus',
-      'params',
-      'realm',
+    expect(Object.keys(entry ?? {})).toEqual([
       'time',
-      'tool',
+      'realm',
       'user',
-      'workspace'
+      'workspace',
+      'tool',
+      'method',
+      'service',
+      'path',
+      'query',
+      'ifMatch',
+      'httpStatus'
     ])
     expect(entry).toMatchObject({
       realm: 'default',
       user: 'frank',
       workspace: WS_A,
-      tool: 'get_event',
-      params: { workspace: 'Alpha', eventId: EVENT_A },
+      tool: 'api_get',
+      method: 'GET',
+      service: 's-events',
+      path: `/api/events/${EVENT_A}`,
+      query: {},
+      ifMatch: false,
       httpStatus: 200
     })
     expect(JSON.stringify(h.logs)).not.toContain('Gala A')
@@ -439,7 +454,7 @@ describe('realms', () => {
     h.world.seedRefreshToken(CLIENT, h.store)
     await h.call('list_workspaces')
     await h.call('list_workspaces', { realm: 'client' })
-    await h.call('get_event', { realm: 'client', eventId: EVENT_A })
+    await h.call('api_get', { realm: 'client', ...eventPath(EVENT_A) })
     expect(h.world.configRequests.sort()).toEqual([PROD, CLIENT].sort())
     const definitions = (await h.client.listTools()).tools
     for (const tool of definitions) expect(Object.keys(tool.inputSchema.properties ?? {}), tool.name).toContain('realm')
@@ -490,11 +505,11 @@ describe('realms', () => {
     expect(list.body).toMatchObject({ realm: 'client', user: 'frank-client' })
     expect(list.body.workspaces).toEqual([{ id: WS_FOREIGN, name: 'Client WS', realm: 'client' }])
 
-    const event = await h.call('get_event', { realm: 'client', eventId: EVENT_A })
+    const event = await h.call('api_get', { realm: 'client', ...eventPath(EVENT_A) })
     expect(event.body).toMatchObject({
       realm: 'client',
       workspace: { id: WS_FOREIGN },
-      event: { title: 'Client event' }
+      body: { title: 'Client event' }
     })
     expect(h.world.requests.every((r) => r.url.host === CLIENT)).toBe(true)
   })
@@ -503,8 +518,8 @@ describe('realms', () => {
     const h = await prodWithClient()
     h.world.seedRefreshToken(CLIENT, h.store)
 
-    await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
-    await h.call('get_event', { realm: 'client', eventId: EVENT_A })
+    await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
+    await h.call('api_get', { realm: 'client', ...eventPath(EVENT_A) })
     for (const request of h.world.requests) {
       const token = request.form?.get('refresh_token') ?? (request.headers.authorization ?? '').replace('Bearer ', '')
       expect(
@@ -516,9 +531,9 @@ describe('realms', () => {
     expect(clientOut.body).toMatchObject({ realm: 'client', user: 'frank-client', message: 'Logged out from client.' })
     expect(h.store.values.has(CLIENT)).toBe(false)
     expect(h.store.values.has(PROD)).toBe(true)
-    expect((await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })).isError).toBe(false)
+    expect((await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })).isError).toBe(false)
     const clientBackendCalls = h.world.backendRequests(CLIENT).length
-    const clientAgain = await h.call('get_event', { realm: 'client', eventId: EVENT_A })
+    const clientAgain = await h.call('api_get', { realm: 'client', ...eventPath(EVENT_A) })
     expect(clientAgain.body.error).toMatch(/^Login opened in your browser for realm client /)
     expect(h.world.backendRequests(CLIENT)).toHaveLength(clientBackendCalls)
 
@@ -527,7 +542,7 @@ describe('realms', () => {
     expect(h.store.values.size).toBe(0)
     const backendCalls = h.world.backendRequests().length
     for (const args of [{ workspace: WS_A }, { realm: 'client' }]) {
-      const again = await h.call('get_event', { ...args, eventId: EVENT_A })
+      const again = await h.call('api_get', { ...args, ...eventPath(EVENT_A) })
       expect(again.body.error).toMatch(/^Login opened in your browser /)
     }
     expect(h.world.backendRequests()).toHaveLength(backendCalls)
@@ -536,8 +551,8 @@ describe('realms', () => {
   it('AC17: logout without realm ends every other realm when the keyring fails for one', async () => {
     const h = await prodWithClient()
     h.world.seedRefreshToken(CLIENT, h.store)
-    await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
-    await h.call('get_event', { realm: 'client', eventId: EVENT_A })
+    await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
+    await h.call('api_get', { realm: 'client', ...eventPath(EVENT_A) })
     const remove = h.store.delete.bind(h.store)
     h.store.delete = async (account) => {
       if (account === PROD) throw new Error('store locked')
@@ -552,7 +567,7 @@ describe('realms', () => {
     )
     expect(h.store.values.has(CLIENT)).toBe(false)
     const clientBackendCalls = h.world.backendRequests(CLIENT).length
-    const client = await h.call('get_event', { realm: 'client', eventId: EVENT_A })
+    const client = await h.call('api_get', { realm: 'client', ...eventPath(EVENT_A) })
     expect(client.body.error).toMatch(/^Login opened in your browser for realm client /)
     expect(h.world.backendRequests(CLIENT)).toHaveLength(clientBackendCalls)
   })
@@ -579,7 +594,7 @@ describe('realms', () => {
 
     const results = await Promise.all([
       h.call('list_workspaces', { realm: 'client' }),
-      h.call('get_event', { realm: 'client', workspace: WS_FOREIGN, eventId: EVENT_A })
+      h.call('api_get', { realm: 'client', workspace: WS_FOREIGN, ...eventPath(EVENT_A) })
     ])
 
     expect(results.map((r) => r.isError)).toEqual([false, false])
@@ -599,10 +614,10 @@ describe('NFR: no token in answers or logs', () => {
     outputs.push((await h.call('list_workspaces')).text)
     await h.completeLogin()
     outputs.push((await h.call('list_workspaces')).text)
-    outputs.push((await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })).text)
-    outputs.push((await h.call('get_event', { workspace: WS_FOREIGN, eventId: EVENT_A })).text)
+    outputs.push((await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })).text)
+    outputs.push((await h.call('api_get', { workspace: WS_FOREIGN, ...eventPath(EVENT_A) })).text)
     h.world.realms.get(STAGE)?.validRefreshTokens.clear()
-    outputs.push((await h.call('get_event', { workspace: WS_B, eventId: EVENT_B })).text)
+    outputs.push((await h.call('api_get', { workspace: WS_B, ...eventPath(EVENT_B) })).text)
     outputs.push((await h.call('logout')).text)
 
     const all = [...outputs, JSON.stringify(h.logs), ...h.stderr].join('\n')
@@ -628,7 +643,7 @@ describe('tool definitions', () => {
     const world = new FakeWorld()
     world.addRealm(CLIENT, { name: 'client', user: 'frank-client' })
     const h = await setup({ hosts: [PROD, CLIENT], world })
-    const result = await h.call('get_event', { realm: 'acme', eventId: EVENT_A })
+    const result = await h.call('api_get', { realm: 'acme', ...eventPath(EVENT_A) })
     expect(result.body).toMatchObject({
       realm: 'acme',
       user: null,

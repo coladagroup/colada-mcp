@@ -1,0 +1,1 @@
+export const MAX_RESPONSE_BYTES = 512_000

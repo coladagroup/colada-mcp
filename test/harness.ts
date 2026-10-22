@@ -48,6 +48,7 @@ export interface Recorded {
   method: string
   headers: Record<string, string>
   form: URLSearchParams | null
+  body: string | null
   redirect: RequestRedirect | undefined
 }
 
@@ -128,7 +129,8 @@ export class FakeWorld {
     if (url.pathname === '/_gw/s-ecosystem/oauthclients/colada-mcp/config') return this.config(url.host, init)
     const headers = Object.fromEntries(new Headers(init?.headers).entries())
     const form = typeof init?.body === 'string' ? new URLSearchParams(init.body) : null
-    this.requests.push({ url, method: init?.method ?? 'GET', headers, form, redirect: init?.redirect })
+    const body = typeof init?.body === 'string' ? init.body : null
+    this.requests.push({ url, method: init?.method ?? 'GET', headers, form, body, redirect: init?.redirect })
     const realm = this.realms.get(url.host)
     if (!realm) throw new TypeError('fetch failed')
     if (url.pathname.endsWith('/protocol/openid-connect/token')) {
@@ -214,7 +216,8 @@ export const STAGE_HOST = 'stage-admin.colada365.com'
 export async function createHarness(
   world: FakeWorld,
   hosts: string[] = [STAGE_HOST],
-  store = new FakeStore()
+  store = new FakeStore(),
+  allowPersonalData = false
 ): Promise<Harness> {
   const opened: string[] = []
   const logs: CallLogEntry[] = []
@@ -222,6 +225,7 @@ export async function createHarness(
   const hooks: { onOpen: ((url: string) => Promise<void>) | null } = { onOpen: null }
   const app = new App({
     hosts,
+    allowPersonalData,
     fetch: world.fetch,
     store,
     now: () => world.now,
@@ -281,4 +285,8 @@ export function workspace(id: string, name: string, authRealm = 'default') {
     defaultLanguages: [],
     vatRate: 0
   }
+}
+
+export function eventPath(id: string) {
+  return { service: 's-events', path: `/api/events/${id}` }
 }

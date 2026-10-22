@@ -38,7 +38,8 @@ export class WorkspaceDirectory {
   async list(state: CallState, refresh = false): Promise<WorkspaceInfo[]> {
     if (this.cache && !refresh) return this.cache
     const response = await callBackend(this.api, this.session, { workspaceId: null, path: WORKSPACES_PATH }, state)
-    const items = Array.isArray(response.body) ? (response.body as Array<Record<string, unknown>>) : []
+    if (!Array.isArray(response.body)) throw new ToolError(messages.failed('GET', WORKSPACES_PATH, response.status))
+    const items = response.body as Array<Record<string, unknown>>
     this.cache = items
       .filter((item) => item.authRealm === this.session.realm && typeof item.id === 'string')
       .map((item) => ({ id: item.id as string, name: String(item.name ?? ''), realm: this.session.realm }))

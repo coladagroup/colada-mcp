@@ -1,11 +1,9 @@
 import { createRequire } from 'node:module'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { App } from './app.js'
-import { registerGetEmailTemplate } from './tools/getEmailTemplate.js'
-import { registerGetEvent } from './tools/getEvent.js'
-import { registerGetRegistrationForm } from './tools/getRegistrationForm.js'
-import { registerListEmailTemplates } from './tools/listEmailTemplates.js'
-import { registerListEvents } from './tools/listEvents.js'
+import { registerApiGet } from './tools/apiGet.js'
+import { registerApiWrite } from './tools/apiWrite.js'
+import { registerGetApiDoc } from './tools/getApiDoc.js'
 import { registerListWorkspaces } from './tools/listWorkspaces.js'
 import { registerLogout } from './tools/logout.js'
 
@@ -14,11 +12,9 @@ const { version } = createRequire(import.meta.url)('../package.json') as { versi
 export function createServer(app: App): McpServer {
   const server = new McpServer({ name: 'colada-mcp', version })
   registerListWorkspaces(server, app)
-  registerListEvents(server, app)
-  registerGetEvent(server, app)
-  registerListEmailTemplates(server, app)
-  registerGetEmailTemplate(server, app)
-  registerGetRegistrationForm(server, app)
+  registerGetApiDoc(server, app)
+  registerApiGet(server, app)
+  registerApiWrite(server, app)
   registerLogout(server, app)
   return server
 }

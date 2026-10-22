@@ -4,7 +4,7 @@ import open from 'open'
 import { App } from './app.js'
 import { keyringStore } from './auth/tokenStore.js'
 import { fileCallLog } from './callLog.js'
-import { parseHosts } from './config.js'
+import { parseAllowPersonalData, parseHosts } from './config.js'
 import { createServer } from './server.js'
 
 const log = (message: string) => process.stderr.write(`${message}\n`)
@@ -19,6 +19,7 @@ try {
 
 const app = new App({
   hosts,
+  allowPersonalData: parseAllowPersonalData(process.env),
   fetch: globalThis.fetch,
   store: keyringStore,
   now: () => Date.now() / 1000,
