@@ -389,3 +389,55 @@ describe('check order (CONTRACT §3)', () => {
     )
   })
 })
+
+describe('review fixes: the checked path is the path that is sent', () => {
+  const sentPath = (path: string) => new URL(`https://h.example.com/_gw/s-events${path}`).pathname
+  const charsReason = `it must only contain letters, digits, "-._~!$&'()*+,;=:@/" and %-escapes`
+
+  it.each([
+    ['/api/.\t./.\t./s-events-guests/api/events/e1/guests', charsReason],
+    ['/api/stripe\\settings', charsReason],
+    ['/api/workspaces/w1\\info', charsReason],
+    ['/api/licenses/items\t', charsReason],
+    ['/api/licenses/items ', charsReason],
+    ['/api/licenses/it\nems', charsReason],
+    ['/api/events/é', charsReason],
+    ['/api/stripe/./settings', 'it must not contain a "." segment'],
+    ['/api/stripe/payment-links/.', 'it must not contain a "." segment'],
+    ['/api/./emailtemplates', 'it must not contain a "." segment'],
+    ['/api/licenses/items%20', 'it must not contain an encoded space or control character'],
+    ['/api/licenses/items%09', 'it must not contain an encoded space or control character'],
+    ['/api/licenses/items%7f', 'it must not contain an encoded space or control character']
+  ])('"%s" is refused: %s', (path, reason) => {
+    expect(refusal('GET', 's-events', path, true)).toBe(pathRefused(path, reason))
+  })
+
+  it('every path the policy accepts is sent unchanged', () => {
+    const candidates = [
+      '/api/events/e1',
+      '/api/events:(title,start)',
+      '/api/events/e1/guests/%64elete/jobs',
+      "/api/a-b_c.d~e!f$g&h'i*j+k,l;m=n:o@p",
+      '/api/events/.hidden',
+      '/api/events/a.b'
+    ]
+    for (const path of candidates) {
+      expect(refusal('GET', 's-events', path, true)).toBeNull()
+      expect(sentPath(path)).toBe(`/_gw/s-events${path}`)
+    }
+  })
+})
+
+describe('review fixes: headers and method', () => {
+  it.each(['constructor', '__proto__', 'toString', 'hasOwnProperty'])('header %s is refused', (name) => {
+    expect(refusal('GET', 's-events', '/api/events', false, { [name]: 'x' })).toContain(
+      `Header "${name}" is not allowed.`
+    )
+  })
+
+  it.each(['poſt', 'PUṪ', 'PATCH '])('method %s with non-ASCII or extra characters is refused', (method) => {
+    expect(() => checkWrite(method, { service: 's-events', path: '/api/events' }, true)).toThrow(
+      `Method "${method}" is not supported by api_write.`
+    )
+  })
+})

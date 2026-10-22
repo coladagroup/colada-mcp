@@ -5,7 +5,8 @@ const ALLOWED_HEADERS: Record<string, string> = { range: 'Range', 'if-match': 'I
 export function checkHeaders(headers: Record<string, string>): Record<string, string> {
   const checked: Record<string, string> = {}
   for (const [name, value] of Object.entries(headers)) {
-    const allowed = ALLOWED_HEADERS[name.toLowerCase()]
+    const key = name.toLowerCase()
+    const allowed = Object.hasOwn(ALLOWED_HEADERS, key) ? ALLOWED_HEADERS[key] : undefined
     if (allowed === undefined || /[\r\n]/.test(value)) throw new ToolError(messages.headerNotAllowed(name))
     checked[allowed] = value
   }

@@ -4,12 +4,16 @@ export interface ApiResponse {
   status: number
   headers: Headers
   body: unknown
+  bodyNote?: string
 }
 
 export interface RequestOptions {
   body?: unknown
   maxBytes?: number
+  onStatus?: (status: number) => void
 }
+
+type BodyResult = { body: unknown } | { reason: string; message: string }
 
 export class ApiClient {
   constructor(
@@ -30,7 +34,8 @@ export class ApiClient {
     options: RequestOptions = {}
   ): Promise<ApiResponse> {
     const path = pathAndQuery.split('?')[0] ?? pathAndQuery
-    const hasBody = options.body !== undefined
+    const write = method !== 'GET'
+    const hasBody = options.body !== undefined && options.body !== null
     let response: Response
     try {
       response = await this.fetchFn(`https://${host}${pathAndQuery}`, {
@@ -47,55 +52,62 @@ export class ApiClient {
         signal: AbortSignal.timeout(this.timeoutMs)
       })
     } catch {
-      throw new ToolError(messages.failed(method, path, null))
+      throw new ToolError(write ? messages.writeNoResponse(method, path) : messages.failed(method, path, null))
     }
+    options.onStatus?.(response.status)
     if (response.status < 200 || response.status >= 300) {
       await response.body?.cancel().catch(() => undefined)
       return { status: response.status, headers: response.headers, body: null }
     }
-    const text = await readText(response, options.maxBytes ?? Number.POSITIVE_INFINITY, method, path)
-    return { status: response.status, headers: response.headers, body: parseBody(response, text, method, path) }
+    const result = await readBody(response, options.maxBytes ?? Number.POSITIVE_INFINITY, method, path)
+    if ('body' in result) return { status: response.status, headers: response.headers, body: result.body }
+    if (!write) throw new ToolError(result.message)
+    return {
+      status: response.status,
+      headers: response.headers,
+      body: null,
+      bodyNote: messages.writeBodyNotReturned(method, path, response.status, result.reason)
+    }
   }
 }
 
-async function readText(response: Response, maxBytes: number, method: string, path: string): Promise<string> {
+async function readBody(response: Response, maxBytes: number, method: string, path: string): Promise<BodyResult> {
+  const tooLarge = { reason: 'it is larger than 100 KB', message: messages.tooLarge(method, path) }
   if (Number(response.headers.get('content-length') ?? 0) > maxBytes) {
     await response.body?.cancel().catch(() => undefined)
-    throw new ToolError(messages.tooLarge(method, path))
+    return tooLarge
   }
-  if (!response.body) return ''
-  const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
-  let size = 0
-  try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      size += value.byteLength
-      if (size > maxBytes) {
-        await reader.cancel().catch(() => undefined)
-        throw new ToolError(messages.tooLarge(method, path))
+  if (response.body) {
+    const reader = response.body.getReader()
+    let size = 0
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        size += value.byteLength
+        if (size > maxBytes) {
+          await reader.cancel().catch(() => undefined)
+          return tooLarge
+        }
+        chunks.push(value)
       }
-      chunks.push(value)
+    } catch {
+      return { reason: 'it could not be read', message: messages.failed(method, path, null) }
     }
-  } catch (err) {
-    if (err instanceof ToolError) throw err
-    throw new ToolError(messages.failed(method, path, null))
   }
-  return Buffer.concat(chunks).toString('utf8')
-}
-
-function parseBody(response: Response, text: string, method: string, path: string): unknown {
-  if (text === '') return null
+  const text = new TextDecoder().decode(Buffer.concat(chunks))
+  if (text === '') return { body: null }
   const contentType = response.headers.get('content-type') ?? ''
   const mediaType = (contentType.split(';')[0] ?? '').trim().toLowerCase()
-  if (mediaType === 'application/yaml' || mediaType === 'text/yaml') return text
+  if (mediaType === 'application/yaml' || mediaType === 'text/yaml') return { body: text }
   if (mediaType !== 'application/json') {
-    throw new ToolError(messages.notJson(method, path, contentType || 'no content type'))
+    const shown = contentType || 'no content type'
+    return { reason: `it is ${shown}, not JSON`, message: messages.notJson(method, path, shown) }
   }
   try {
-    return JSON.parse(text)
+    return { body: JSON.parse(text) }
   } catch {
-    throw new ToolError(messages.invalidJson(method, path, response.status))
+    return { reason: 'it is not valid JSON', message: messages.invalidJson(method, path, response.status) }
   }
 }

@@ -66,7 +66,7 @@ export function apiCallOf(input: {
   headers?: Record<string, string>
 }): ApiCall {
   return {
-    method: input.method,
+    method: /^[A-Za-z]+$/.test(input.method) ? input.method.toUpperCase() : input.method,
     service: input.service,
     path: input.path,
     query: input.query ?? {},

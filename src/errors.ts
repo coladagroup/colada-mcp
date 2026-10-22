@@ -26,6 +26,10 @@ export const messages = {
     `${method} ${path} was refused (401): the session token was not accepted. The request was not sent again. Call api_write again; the user approves it again.`,
   tooLarge: (method: string, path: string) =>
     `The response of ${method} ${path} is larger than 100 KB and is not returned. Ask for less: a smaller Range (for example "Range: events 0-20"), a narrower query, or a projection in the path (for example /api/events:(title,start)).`,
+  writeBodyNotReturned: (method: string, path: string, status: number, reason: string) =>
+    `${method} ${path} succeeded (${status}), but its response body is not returned: ${reason}. The change was applied: do not send it again. Read the object with api_get if you need it.`,
+  writeNoResponse: (method: string, path: string) =>
+    `${method} ${path} got no response (timeout or network error). The change may have been applied: read the object with api_get before you send it again.`,
   invalidJson: (method: string, path: string, status: number) => `${method} ${path} returned invalid JSON (${status}).`,
   notJson: (method: string, path: string, contentType: string) =>
     `${method} ${path} returned ${contentType}, not JSON. File downloads are not supported.`,

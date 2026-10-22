@@ -100,17 +100,17 @@ describe('ApiClient.request (CONTRACT §2, §5)', () => {
     const { client } = stubClient(
       () => new Response('{"a":', { status: 200, headers: { 'Content-Type': 'application/json' } })
     )
-    expect(await errorOf(client.request('PATCH', 'h.example.com', PATH, 'tkn'))).toBe(
-      `PATCH ${PATH} returned invalid JSON (200).`
+    expect(await errorOf(client.request('GET', 'h.example.com', PATH, 'tkn'))).toBe(
+      `GET ${PATH} returned invalid JSON (200).`
     )
   })
 
-  it('names the method when the network fails', async () => {
+  it('a read without a response names the method', async () => {
     const client = new ApiClient(async () => {
       throw new TypeError('fetch failed')
     })
-    expect(await errorOf(client.request('PUT', 'h.example.com', `${PATH}?x=1`, 'tkn'))).toBe(
-      `PUT ${PATH} failed (no response).`
+    expect(await errorOf(client.request('GET', 'h.example.com', `${PATH}?x=1`, 'tkn'))).toBe(
+      `GET ${PATH} failed (no response).`
     )
   })
 
@@ -366,5 +366,99 @@ describe('call log for generic calls (AC31, CONTRACT §7)', () => {
     expect(world.requests).toHaveLength(0)
     expect(h.logs[0]).toMatchObject({ method: 'DELETE', ifMatch: false, query: {}, httpStatus: null })
     expect(Object.keys(h.logs[0] ?? {})).toEqual(KEYS)
+  })
+})
+
+describe('review fixes: HTTP', () => {
+  it('body null sends no body and no Content-Type', async () => {
+    const { client, calls } = stubClient(() => json(200, {}))
+    await client.request('POST', 'h.example.com', PATH, 'tkn', {}, { body: null })
+    expect(calls[0]?.init?.body).toBeUndefined()
+    expect(calls[0]?.init?.headers).not.toHaveProperty('Content-Type')
+  })
+
+  it('JSON with a UTF-8 BOM is parsed', async () => {
+    const { client } = stubClient(
+      () => new Response('﻿{"a":1}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    )
+    expect((await client.get('h.example.com', PATH, 'tkn')).body).toEqual({ a: 1 })
+  })
+
+  const applied = (status: number, reason: string) =>
+    `POST ${PATH} succeeded (${status}), but its response body is not returned: ${reason}. The change was applied: do not send it again. Read the object with api_get if you need it.`
+
+  it.each([
+    ['too large', () => json(201, 'x'.repeat(MAX_RESPONSE_BYTES + 10)), applied(201, 'it is larger than 100 KB')],
+    [
+      'not JSON',
+      () => new Response('a,b', { status: 200, headers: { 'Content-Type': 'text/csv' } }),
+      applied(200, 'it is text/csv, not JSON')
+    ],
+    [
+      'invalid JSON',
+      () => new Response('{"a":', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      applied(200, 'it is not valid JSON')
+    ]
+  ])('a 2xx write whose body is %s returns the status without a body', async (_name, response, note) => {
+    const { client } = stubClient(response)
+    const result = await client.request('POST', 'h.example.com', PATH, 'tkn', {}, { maxBytes: MAX_RESPONSE_BYTES })
+    expect(result.body).toBeNull()
+    expect(result.bodyNote).toBe(note)
+    expect(result.status).toBeGreaterThanOrEqual(200)
+  })
+
+  it('a write without a response says the change may have been applied', async () => {
+    const client = new ApiClient(async () => {
+      throw new DOMException('timeout', 'TimeoutError')
+    })
+    expect(await errorOf(client.request('PATCH', 'h.example.com', PATH, 'tkn'))).toBe(
+      `PATCH ${PATH} got no response (timeout or network error). The change may have been applied: read the object with api_get before you send it again.`
+    )
+  })
+
+  it('httpStatus is recorded when the body of a 2xx read cannot be returned', async () => {
+    const { world, session } = await setup()
+    world.backendRaw.set(PATH, () => json(200, 'x'.repeat(MAX_RESPONSE_BYTES + 10)))
+    const state: { httpStatus: number | null } = { httpStatus: null }
+    await errorOf(
+      callBackend(
+        new ApiClient(world.fetch),
+        session,
+        { workspaceId: WS_A, path: PATH, maxBytes: MAX_RESPONSE_BYTES },
+        state
+      )
+    )
+    expect(state.httpStatus).toBe(200)
+  })
+
+  it('httpStatus is recorded for a write whose body is not returned', async () => {
+    const { world, session } = await setup()
+    world.backendRaw.set(PATH, () => new Response('a,b', { status: 201, headers: { 'Content-Type': 'text/csv' } }))
+    const state: { httpStatus: number | null } = { httpStatus: null }
+    const response = await callBackend(
+      new ApiClient(world.fetch),
+      session,
+      { workspaceId: WS_A, method: 'POST', path: PATH, body: {} },
+      state
+    )
+    expect(state.httpStatus).toBe(201)
+    expect(response.bodyNote).toContain('The change was applied')
+  })
+
+  it('apiCallOf logs the method as it is sent', () => {
+    expect(apiCallOf({ method: 'put', service: 's-events', path: '/api/x' }).method).toBe('PUT')
+    expect(apiCallOf({ method: 'poſt', service: 's-events', path: '/api/x' }).method).toBe('poſt')
+  })
+})
+
+describe('review fixes: workspace list', () => {
+  it('an empty 200 is an error and is not cached', async () => {
+    const { h, world } = await setup()
+    world.backendRaw.set('/_gw/s-workspaces/api/workspaces', () => new Response(null, { status: 200 }))
+    const first = await h.call('list_workspaces')
+    expect(first.body.error).toBe('GET /_gw/s-workspaces/api/workspaces failed (200).')
+    world.backendRaw.delete('/_gw/s-workspaces/api/workspaces')
+    const second = await h.call('list_workspaces')
+    expect(second.isError).toBe(false)
   })
 })
