@@ -49,7 +49,8 @@ const DENYLIST_CASES: Case[] = [
   ['D10', 's-workspaces', 'POST', '/api/admin/workspaces/jobs/removal'],
   ['D11', 's-events-invoices', 'POST', '/api/events/e1/guestsinvoices/remove/jobs'],
   ['D12', 's-campaigns', 'GET', '/api/campaigns/c1/image/delete'],
-  ['D13', 's-events-mcontent-requests', 'GET', '/api/events/e1/mcontent/requests/r1/file/delete/url']
+  ['D13', 's-events-mcontent-requests', 'GET', '/api/events/e1/mcontent/requests/r1/file/delete/url'],
+  ['D14', 's-events-invoices', 'POST', '/api/events/e1/brokersinvoices/remove/jobs']
 ]
 
 const SECRET_CASES: Case[] = [
@@ -60,9 +61,6 @@ const SECRET_CASES: Case[] = [
   ['S05', 's-campaigns-integration', 'PUT', '/api/stripe/settings'],
   ['S06', 's-campaigns-integration', 'POST', '/api/stripe/payment-links'],
   ['S07', 's-access', 'POST', '/api/auth/integrations/campaigns/firebase/token'],
-  ['S08', 's-access', 'POST', '/api/auth/integrations/designer/firebase/token'],
-  ['S09', 's-access', 'POST', '/api/auth/integrations/sessions/firebase/token'],
-  ['S10', 's-access', 'POST', '/api/auth/integrations/scripts/firebase/token'],
   ['S11', 's-access', 'PUT', '/api/users/u1/reset-otp'],
   ['S12', 's-directory-contacts', 'PUT', '/api/contacts/c1/password/reset'],
   ['S13', 's-workspaces', 'GET', '/api/workspaces/w1/smtp-with-creds'],

@@ -22,7 +22,7 @@ export const DELETE_DENYLIST: readonly RouteRule[] = [
     id: 'D11',
     service: 's-events-invoices',
     method: 'POST',
-    pattern: /^\/api\/events\/[^/]+\/guestsinvoices\/remove\/jobs\/?$/
+    pattern: /^\/api\/(events\/[^/]+\/)?guestsinvoices\/remove\/jobs\/?$/
   },
   { id: 'D12', service: 's-campaigns', method: 'GET', pattern: /^\/api\/campaigns\/[^/]+\/image\/delete\/?$/ },
   {
@@ -30,6 +30,12 @@ export const DELETE_DENYLIST: readonly RouteRule[] = [
     service: 's-events-mcontent-requests',
     method: 'GET',
     pattern: /^\/api\/events\/[^/]+\/mcontent\/requests\/[^/]+\/file\/delete\/url\/?$/
+  },
+  {
+    id: 'D14',
+    service: 's-events-invoices',
+    method: 'POST',
+    pattern: /^\/api\/events\/[^/]+\/brokersinvoices\/remove\/jobs\/?$/
   }
 ]
 
@@ -42,30 +48,7 @@ export const SECRET_ROUTES: readonly RouteRule[] = [
   { id: 'S04', service: 's-campaigns-integration', method: 'GET', pattern: /^\/api\/stripe\/settings\/?$/ },
   { id: 'S05', service: 's-campaigns-integration', method: 'PUT', pattern: /^\/api\/stripe\/settings\/?$/ },
   { id: 'S06', service: 's-campaigns-integration', method: 'POST', pattern: /^\/api\/stripe\/payment-links\/?$/ },
-  {
-    id: 'S07',
-    service: 's-access',
-    method: 'POST',
-    pattern: /^\/api\/auth\/integrations\/campaigns\/firebase\/token\/?$/
-  },
-  {
-    id: 'S08',
-    service: 's-access',
-    method: 'POST',
-    pattern: /^\/api\/auth\/integrations\/designer\/firebase\/token\/?$/
-  },
-  {
-    id: 'S09',
-    service: 's-access',
-    method: 'POST',
-    pattern: /^\/api\/auth\/integrations\/sessions\/firebase\/token\/?$/
-  },
-  {
-    id: 'S10',
-    service: 's-access',
-    method: 'POST',
-    pattern: /^\/api\/auth\/integrations\/scripts\/firebase\/token\/?$/
-  },
+  { id: 'S07', service: 's-access', method: 'POST', pattern: /^\/api\/auth\/integrations\/[^/]+\/firebase\/token\/?$/ },
   { id: 'S11', service: 's-access', method: 'PUT', pattern: /^\/api\/users\/[^/]+\/reset-otp\/?$/ },
   {
     id: 'S12',

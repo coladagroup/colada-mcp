@@ -35,6 +35,8 @@ export const messages = {
   notJson: (method: string, path: string, contentType: string) =>
     `${method} ${path} returned ${contentType}, not JSON. File downloads are not supported.`,
   apiDocNeedsService: () => 'Pass "service" together with "doc".',
+  apiDocBadName: (doc: string) =>
+    `Doc name "${doc}" is not allowed: use a name from the service list (letters, digits, "-", "_", ".").`,
   apiDocNoService: (service: string) =>
     `No API docs for service "${service}". Call get_api_doc without service for the list.`,
   apiDocSeveral: (service: string, docs: string[]) =>

@@ -11,6 +11,8 @@ import type { Method } from './tables.js'
 export { checkService } from './service.js'
 export { MAX_RESPONSE_BYTES } from './size.js'
 
+const PROJECTION_SUFFIX = /:\([^/]*\)\/?$/
+
 export interface PolicyInput {
   service: string
   path: string
@@ -30,10 +32,14 @@ export function checkWrite(method: string, input: PolicyInput, allowPersonalData
   return check(() => checkWriteMethod(method), input, allowPersonalData)
 }
 
+function blockForm(path: string): string {
+  return path.toLowerCase().replace(PROJECTION_SUFFIX, '')
+}
+
 function check(resolveMethod: () => Method, input: PolicyInput, allowPersonalData: boolean): CheckedRequest {
   checkService(input.service)
   const match = checkPath(input.path)
-  const route = { method: resolveMethod(), service: input.service, match }
+  const route = { method: resolveMethod(), service: input.service, match, blockMatch: blockForm(match) }
   const target = `/_gw/${input.service}${input.path}`
   checkDeleteAllowlist(route, target)
   checkDeleteDenylist(route, target)

@@ -1,5 +1,5 @@
 import { messages, ToolError } from '../errors.js'
-import { onList, type Route } from './routes.js'
+import { onAllowList, type Route } from './routes.js'
 import { PERSONAL_DATA_ROUTE_ALLOWLIST, PERSONAL_DATA_SERVICES } from './tables.js'
 
 const BORDERLINE_SERVICES = new Set(PERSONAL_DATA_ROUTE_ALLOWLIST.map((rule) => rule.service))
@@ -9,7 +9,7 @@ export function checkPersonalData(route: Route, target: string, allowPersonalDat
   if (PERSONAL_DATA_SERVICES.includes(route.service)) {
     throw new ToolError(messages.personalDataService(route.service))
   }
-  if (BORDERLINE_SERVICES.has(route.service) && !onList(PERSONAL_DATA_ROUTE_ALLOWLIST, route)) {
+  if (BORDERLINE_SERVICES.has(route.service) && !onAllowList(PERSONAL_DATA_ROUTE_ALLOWLIST, route)) {
     throw new ToolError(messages.personalDataRoute(route.method, target))
   }
 }

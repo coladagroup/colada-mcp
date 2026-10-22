@@ -25,6 +25,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepack": "rm -rf dist && npm run build",
     "test": "vitest run",
     "lint": "biome check ."
   },

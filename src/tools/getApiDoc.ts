@@ -8,6 +8,7 @@ import { openRealm, realmShape, runApiTool } from './run.js'
 
 const DOCS_SERVICE = 's-ecosystem'
 const CATALOG_PATH = '/api/api-docs'
+const DOC_NAME = /^(?!\.{1,2}$)[A-Za-z0-9._-]+$/
 
 interface ServiceDocs {
   service: string
@@ -41,6 +42,7 @@ export function registerGetApiDoc(server: McpServer, app: App) {
         const { service, doc } = params
         if (service) checkService(service)
         else if (doc) throw new ToolError(messages.apiDocNeedsService())
+        if (doc !== undefined && !DOC_NAME.test(doc)) throw new ToolError(messages.apiDocBadName(doc))
         const { session } = await openRealm(app, ctx, params.realm)
         const get = (path: string, notFound?: string) => {
           ctx.call.path = path

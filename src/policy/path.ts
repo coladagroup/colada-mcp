@@ -21,9 +21,9 @@ export function checkPath(path: string): string {
   if (decoded.includes('..') || decoded.includes('//')) throw refuse('it must not contain ".." or "//"')
   if (decoded.split('/').includes('.')) throw refuse('it must not contain a "." segment')
   if (new URL(path, 'https://h.example.com').pathname !== path) throw refuse('it changes when the URL is parsed')
-  return decoded.toLowerCase()
+  return decoded
 }
 
 function hasSpaceOrControl(value: string): boolean {
-  return [...value].some((char) => char <= ' ' || char === '\u007f')
+  return /[\p{Cc}\p{Cf}\p{Z}]/u.test(value)
 }
