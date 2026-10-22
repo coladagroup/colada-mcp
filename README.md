@@ -17,8 +17,7 @@ Open Settings → Developer → Edit Config and add this to `claude_desktop_conf
   "mcpServers": {
     "colada": {
       "command": "npx",
-      "args": ["-y", "@colada-ag/mcp@0.1.0"],
-      "env": { "COLADA_ENV": "stage" }
+      "args": ["-y", "@colada-ag/mcp@0.2.0"]
     }
   }
 }
@@ -29,7 +28,7 @@ Restart Claude Desktop.
 ### Claude Code
 
 ```bash
-claude mcp add colada --env COLADA_ENV=stage -- npx -y @colada-ag/mcp@0.1.0
+claude mcp add colada -- npx -y @colada-ag/mcp@0.2.0
 ```
 
 ### Cursor
@@ -42,8 +41,7 @@ Open Cursor Settings → MCP → Add new global MCP server, or edit `~/.cursor/m
     "colada": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@colada-ag/mcp@0.1.0"],
-      "env": { "COLADA_ENV": "stage" }
+      "args": ["-y", "@colada-ag/mcp@0.2.0"]
     }
   }
 }
@@ -53,28 +51,33 @@ Use the global `~/.cursor/mcp.json`, not a project `.cursor/mcp.json`. In Cursor
 
 Keep Privacy Mode on (Settings → General → Privacy) and do not turn on auto-run for these tools.
 
-## Environment and realms
+## Hosts and realms
 
-`COLADA_ENV` is `stage` (the default, also when empty) or `prod`. Any other value stops the server with an error.
+`COLADA_HOSTS` is a comma-separated list of backoffice host names, without `https://`. The default is `admin.colada365.com`. Add it to `env` in the config above, for example for stage:
 
-Each realm has its own host:
+```json
+"env": { "COLADA_HOSTS": "stage-admin.colada365.com" }
+```
 
-| Realm | stage | prod |
-|---|---|---|
-| `default` | `stage-admin.colada365.com` | `admin.colada365.com` |
-| `vw` | — | `vw.colada365.com` |
-| `abiomed` | — | `abiomed.colada365.com` |
-| `lidl` | — | `lidl-football-hub.com` |
+In Claude Code:
 
-The dedicated realms `vw`, `abiomed` and `lidl` work only on prod. On stage, a call with one of them fails with an error.
+```bash
+claude mcp add colada --env COLADA_HOSTS=stage-admin.colada365.com -- npx -y @colada-ag/mcp@0.2.0
+```
+
+The server reads the Keycloak realm of each host from that host's public backoffice config. Tokens of a realm go only to its own host.
+
+With one host, the tools have no realm parameter. With several hosts, for example `admin.colada365.com,<customer host>`, the tools get a `realm` parameter. Without it, they use the realm of the first host. Each host must have its own realm.
+
+The old `COLADA_ENV` setting is no longer used. If it is set, the server stops with an error.
 
 ## Login
 
 The first tool call opens the Colada login in your browser. Log in, then ask Claude to retry. The session is kept in the OS keychain (service `colada-mcp`) and lasts about one working day, also after a restart.
 
-Each realm has its own login. The first call with a dedicated realm opens a second browser login on that realm's host. Log in there with your own user of that realm.
+Each realm has its own login. The first call with another realm opens a second browser login on that realm's host. Log in there with your own user of that realm.
 
-To end the session, ask Claude to call `logout`. Without a realm it logs out from all realms.
+To end the session, ask Claude to call `logout`. With several hosts and no realm, it logs out from all realms.
 
 ## Call log
 

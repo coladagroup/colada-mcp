@@ -14,7 +14,7 @@ import {
 } from './harness.js'
 
 const STAGE = 'stage-admin.colada365.com'
-const LIDL = 'lidl-football-hub.com'
+const CLIENT = 'client.example.com'
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const harnesses: Harness[] = []
@@ -34,15 +34,12 @@ function stageWorld() {
   return world
 }
 
-async function harness(
-  world: FakeWorld,
-  options: { env?: 'stage' | 'prod'; loggedIn?: boolean; store?: FakeStore } = {}
-) {
+async function harness(world: FakeWorld, options: { hosts?: string[]; loggedIn?: boolean; store?: FakeStore } = {}) {
   const store = options.store ?? new FakeStore()
   if (options.loggedIn !== false && !store.values.has(STAGE) && world.realms.has(STAGE)) {
     world.seedRefreshToken(STAGE, store)
   }
-  const h = await createHarness(world, options.env ?? 'stage', store)
+  const h = await createHarness(world, options.hosts, store)
   harnesses.push(h)
   return h
 }
@@ -150,17 +147,18 @@ describe('logout races', () => {
 describe('refresh token from another process', () => {
   it('invalid_grant after another process rotated the token retries with the new token and keeps it', async () => {
     const world = new FakeWorld()
-    world.addRealm(LIDL, {
-      user: 'frank-lidl',
+    world.addRealm(CLIENT, {
+      name: 'client',
+      user: 'frank-client',
       homeWorkspace: WS_FOREIGN,
       rotation: true,
-      workspaces: [workspace(WS_FOREIGN, 'Lidl WS', 'lidl')]
+      workspaces: [workspace(WS_FOREIGN, 'Client WS', 'client')]
     })
     world.addRealm('admin.colada365.com', { user: 'frank' })
     const store = new FakeStore()
-    world.seedRefreshToken(LIDL, store)
-    const first = await harness(world, { env: 'prod', store })
-    const second = await harness(world, { env: 'prod', store })
+    world.seedRefreshToken(CLIENT, store)
+    const first = await harness(world, { hosts: ['admin.colada365.com', CLIENT], store })
+    const second = await harness(world, { hosts: ['admin.colada365.com', CLIENT], store })
     const original = world.fetch
     ;(second.app.deps as { fetch: typeof fetch }).fetch = async (input, init) => {
       if (String(input).endsWith('/token')) await sleep(30)
@@ -169,14 +167,14 @@ describe('refresh token from another process', () => {
     world.tokenDelayMs = 10
 
     const [a, b] = await Promise.all([
-      first.call('list_workspaces', { realm: 'lidl' }),
-      second.call('list_workspaces', { realm: 'lidl' })
+      first.call('list_workspaces', { realm: 'client' }),
+      second.call('list_workspaces', { realm: 'client' })
     ])
 
     expect([a.isError, b.isError]).toEqual([false, false])
     expect(second.opened).toHaveLength(0)
-    const stored = store.values.get(LIDL) ?? ''
-    expect(world.realms.get(LIDL)?.validRefreshTokens.has(stored)).toBe(true)
+    const stored = store.values.get(CLIENT) ?? ''
+    expect(world.realms.get(CLIENT)?.validRefreshTokens.has(stored)).toBe(true)
   })
 })
 
@@ -246,8 +244,10 @@ describe('backend responses', () => {
 })
 
 describe('inputs', () => {
-  it('an empty realm means the default realm in every tool', async () => {
-    const h = await harness(stageWorld())
+  it('an empty realm means the main realm in every tool', async () => {
+    const world = stageWorld()
+    world.addRealm(CLIENT, { name: 'client', user: 'frank-client' })
+    const h = await harness(world, { hosts: [STAGE, CLIENT] })
     const event = await h.call('get_event', { realm: '', workspace: WS_A, eventId: EVENT_A })
     expect(event.body).toMatchObject({ realm: 'default', event: { uid: EVENT_A } })
     const logout = await h.call('logout', { realm: '' })

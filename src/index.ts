@@ -4,21 +4,21 @@ import open from 'open'
 import { App } from './app.js'
 import { keyringStore } from './auth/tokenStore.js'
 import { fileCallLog } from './callLog.js'
-import { type Env, parseEnv } from './config.js'
+import { parseHosts } from './config.js'
 import { createServer } from './server.js'
 
 const log = (message: string) => process.stderr.write(`${message}\n`)
 
-let env: Env
+let hosts: string[]
 try {
-  env = parseEnv(process.env.COLADA_ENV)
+  hosts = parseHosts(process.env)
 } catch (err) {
   log(`colada-mcp: ${(err as Error).message}`)
   process.exit(1)
 }
 
 const app = new App({
-  env,
+  hosts,
   fetch: globalThis.fetch,
   store: keyringStore,
   now: () => Date.now() / 1000,

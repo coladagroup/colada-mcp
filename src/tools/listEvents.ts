@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { fetchPage, PAGE_SIZE } from '../api/paging.js'
 import type { App } from '../app.js'
-import { realmInput, runTool, workspaceInput } from './run.js'
+import { openRealm, realmShape, runTool, workspaceInput } from './run.js'
 
 const PATH = '/_gw/s-events/api/events:(title,start,end,timeZone,status,isTemplate,archived)'
 const DEFAULT_Q = 'status=!FINISHED&archived=!true&isTemplate=!true'
@@ -40,7 +40,7 @@ export function registerListEvents(server: McpServer, app: App) {
     {
       description: DESCRIPTION,
       inputSchema: {
-        realm: realmInput,
+        ...realmShape(app),
         workspace: workspaceInput,
         q: z.string().optional().describe('Colada filter expression. Leave it out for active events.'),
         offset: z.number().int().min(0).optional().describe('Index of the first event. Default: 0.')
@@ -48,9 +48,8 @@ export function registerListEvents(server: McpServer, app: App) {
       annotations: { readOnlyHint: true }
     },
     (params) => {
-      const realm = params.realm || 'default'
-      return runTool(app, 'list_events', params, realm, async (ctx) => {
-        const { session, directory } = app.realm(realm)
+      return runTool(app, 'list_events', params, async (ctx) => {
+        const { session, directory } = await openRealm(app, ctx, params.realm)
         const offset = params.offset ?? 0
         const workspace = await directory.resolve(params.workspace, ctx.state)
         ctx.workspace = workspace
