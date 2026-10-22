@@ -55,7 +55,10 @@ export function runApiTool(
   handler: Handler<ApiToolContext>
 ): Promise<CallToolResult> {
   const ctx: ApiToolContext = { realm: realm || null, state: { httpStatus: null }, workspace: null, call }
-  return execute(app, tool, ctx, handler, () => ({ ...ctx.call }))
+  return execute(app, tool, ctx, handler, () => {
+    const { method, service, path, query, ifMatch } = ctx.call
+    return { method, service, path, query, ifMatch }
+  })
 }
 
 export function apiCallOf(input: {

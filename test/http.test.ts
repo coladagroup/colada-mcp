@@ -462,3 +462,31 @@ describe('review fixes: workspace list', () => {
     expect(second.isError).toBe(false)
   })
 })
+
+describe('second opinion: log fields are picked, not spread', () => {
+  it('extra fields on the call object never reach the log', async () => {
+    const { h } = await setup()
+    const wider = {
+      ...apiCallOf({ method: 'POST', service: 's-events', path: '/api/events' }),
+      body: { secretField: 'BODYVALUE' },
+      headers: { 'If-Match': 'IFMATCHVALUE' }
+    }
+    await runApiTool(h.app, 'api_write', undefined, wider, async () => ({}))
+    const line = JSON.stringify(h.logs[0])
+    expect(Object.keys(h.logs[0] ?? {})).toEqual([
+      'time',
+      'realm',
+      'user',
+      'workspace',
+      'tool',
+      'method',
+      'service',
+      'path',
+      'query',
+      'ifMatch',
+      'httpStatus'
+    ])
+    expect(line).not.toContain('BODYVALUE')
+    expect(line).not.toContain('IFMATCHVALUE')
+  })
+})
