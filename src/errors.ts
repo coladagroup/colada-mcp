@@ -1,5 +1,7 @@
 export class ToolError extends Error {}
 
+export class ResponseTooLargeError extends ToolError {}
+
 export const messages = {
   loginOpened: (realm: string, host: string, url: string) =>
     `Login opened in your browser for realm ${realm} on ${host}. Finish it, then call the tool again. If no browser tab opened, open this URL: ${url}`,
@@ -11,7 +13,6 @@ export const messages = {
     `Cannot read the Keycloak realm of ${host} (HTTP ${status ?? 'no response'}). Check COLADA_HOSTS.`,
   duplicateRealm: (realm: string) => `Two hosts in COLADA_HOSTS use realm ${realm}. Keep only one of them.`,
   unknownRealm: (value: string) => `Unknown realm "${value}". Leave realm out unless the user names another realm.`,
-  invalidId: (field: string, value: string) => `${field} "${value}" is not a valid Colada id.`,
   forbidden: (method: string, path: string) =>
     `${method} ${path} was refused (403): your role lacks access to this endpoint. Ask an admin for the permission.`,
   failed: (method: string, path: string, status: number | null) =>
@@ -33,6 +34,17 @@ export const messages = {
   invalidJson: (method: string, path: string, status: number) => `${method} ${path} returned invalid JSON (${status}).`,
   notJson: (method: string, path: string, contentType: string) =>
     `${method} ${path} returned ${contentType}, not JSON. File downloads are not supported.`,
+  apiDocNeedsService: () => 'Pass "service" together with "doc".',
+  apiDocNoService: (service: string) =>
+    `No API docs for service "${service}". Call get_api_doc without service for the list.`,
+  apiDocSeveral: (service: string, docs: string[]) =>
+    `Service ${service} has several API docs: ${docs.join(', ')}. Pass "doc".`,
+  apiDocNotFound: (service: string, doc: string) =>
+    `No API doc "${doc}" for service "${service}". Call get_api_doc with only the service to see its docs.`,
+  apiDocForbidden: () =>
+    'get_api_doc was refused (403): your role lacks the permission api:api-doc:view. Ask an admin.',
+  apiDocTooLarge: (service: string, doc: string) =>
+    `The API doc ${service}/${doc} is larger than 100 KB and is not returned.`,
   serviceNotAllowed: (service: string) =>
     `Service "${service}" is not allowed. Pass a backoffice service name like s-events (lower case). CONSR services (s-consr-*) cannot be called with this token.`,
   pathNotAllowed: (path: string, reason: string) =>

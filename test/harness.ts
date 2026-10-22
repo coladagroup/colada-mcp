@@ -286,3 +286,7 @@ export function workspace(id: string, name: string, authRealm = 'default') {
     vatRate: 0
   }
 }
+
+export function eventPath(id: string) {
+  return { service: 's-events', path: `/api/events/${id}` }
+}

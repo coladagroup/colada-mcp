@@ -1,4 +1,4 @@
-import { messages, ToolError } from '../errors.js'
+import { messages, ResponseTooLargeError, ToolError } from '../errors.js'
 
 export interface ApiResponse {
   status: number
@@ -13,17 +13,13 @@ export interface RequestOptions {
   onStatus?: (status: number) => void
 }
 
-type BodyResult = { body: unknown } | { reason: string; message: string }
+type BodyResult = { body: unknown } | { reason: string; error: ToolError }
 
 export class ApiClient {
   constructor(
     private readonly fetchFn: typeof fetch,
     private readonly timeoutMs = 30_000
   ) {}
-
-  get(host: string, pathAndQuery: string, token: string, headers: Record<string, string> = {}) {
-    return this.request('GET', host, pathAndQuery, token, headers)
-  }
 
   async request(
     method: string,
@@ -61,7 +57,7 @@ export class ApiClient {
     }
     const result = await readBody(response, options.maxBytes ?? Number.POSITIVE_INFINITY, method, path)
     if ('body' in result) return { status: response.status, headers: response.headers, body: result.body }
-    if (!write) throw new ToolError(result.message)
+    if (!write) throw result.error
     return {
       status: response.status,
       headers: response.headers,
@@ -72,7 +68,10 @@ export class ApiClient {
 }
 
 async function readBody(response: Response, maxBytes: number, method: string, path: string): Promise<BodyResult> {
-  const tooLarge = { reason: 'it is larger than 100 KB', message: messages.tooLarge(method, path) }
+  const tooLarge = {
+    reason: 'it is larger than 100 KB',
+    error: new ResponseTooLargeError(messages.tooLarge(method, path))
+  }
   if (Number(response.headers.get('content-length') ?? 0) > maxBytes) {
     await response.body?.cancel().catch(() => undefined)
     return tooLarge
@@ -93,7 +92,7 @@ async function readBody(response: Response, maxBytes: number, method: string, pa
         chunks.push(value)
       }
     } catch {
-      return { reason: 'it could not be read', message: messages.failed(method, path, null) }
+      return { reason: 'it could not be read', error: new ToolError(messages.failed(method, path, null)) }
     }
   }
   const text = new TextDecoder().decode(Buffer.concat(chunks))
@@ -103,11 +102,14 @@ async function readBody(response: Response, maxBytes: number, method: string, pa
   if (mediaType === 'application/yaml' || mediaType === 'text/yaml') return { body: text }
   if (mediaType !== 'application/json') {
     const shown = contentType || 'no content type'
-    return { reason: `it is ${shown}, not JSON`, message: messages.notJson(method, path, shown) }
+    return { reason: `it is ${shown}, not JSON`, error: new ToolError(messages.notJson(method, path, shown)) }
   }
   try {
     return { body: JSON.parse(text) }
   } catch {
-    return { reason: 'it is not valid JSON', message: messages.invalidJson(method, path, response.status) }
+    return {
+      reason: 'it is not valid JSON',
+      error: new ToolError(messages.invalidJson(method, path, response.status))
+    }
   }
 }

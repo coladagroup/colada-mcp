@@ -86,12 +86,12 @@ describe('ApiClient.request (CONTRACT §2, §5)', () => {
     const { client } = stubClient(
       () => new Response(yaml, { status: 200, headers: { 'Content-Type': 'application/yaml; charset=utf-8' } })
     )
-    expect((await client.get('h.example.com', PATH, 'tkn')).body).toBe(yaml)
+    expect((await client.request('GET', 'h.example.com', PATH, 'tkn')).body).toBe(yaml)
   })
 
   it('refuses other content types', async () => {
     const { client } = stubClient(() => new Response('a,b', { status: 200, headers: { 'Content-Type': 'text/csv' } }))
-    expect(await errorOf(client.get('h.example.com', PATH, 'tkn'))).toBe(
+    expect(await errorOf(client.request('GET', 'h.example.com', PATH, 'tkn'))).toBe(
       `GET ${PATH} returned text/csv, not JSON. File downloads are not supported.`
     )
   })
@@ -381,7 +381,7 @@ describe('review fixes: HTTP', () => {
     const { client } = stubClient(
       () => new Response('﻿{"a":1}', { status: 200, headers: { 'Content-Type': 'application/json' } })
     )
-    expect((await client.get('h.example.com', PATH, 'tkn')).body).toEqual({ a: 1 })
+    expect((await client.request('GET', 'h.example.com', PATH, 'tkn')).body).toEqual({ a: 1 })
   })
 
   const applied = (status: number, reason: string) =>

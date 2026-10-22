@@ -1,7 +1,7 @@
 {
   "name": "@colada-ag/mcp",
-  "version": "0.2.0",
-  "description": "Local read-only MCP server for Colada support",
+  "version": "0.3.0",
+  "description": "Local MCP server for Colada support: reads and changes backoffice data with your own Colada login",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",

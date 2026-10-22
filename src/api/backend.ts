@@ -18,6 +18,7 @@ export interface BackendRequest {
   body?: unknown
   maxBytes?: number
   notFound?: string
+  forbidden?: string
 }
 
 export interface BackendResponse extends ApiResponse {
@@ -58,7 +59,7 @@ export async function callBackend(
   if (response.status >= 200 && response.status < 300) {
     return { ...response, returnedHeaders: returnedHeaders(response.headers) }
   }
-  if (response.status === 403) throw new ToolError(messages.forbidden(method, request.path))
+  if (response.status === 403) throw new ToolError(request.forbidden ?? messages.forbidden(method, request.path))
   if (response.status === 404 && request.notFound) throw new ToolError(request.notFound)
   if (response.status === 409 || response.status === 412) {
     throw new ToolError(messages.conflict(method, request.path, response.status))
