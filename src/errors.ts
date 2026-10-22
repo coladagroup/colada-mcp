@@ -7,9 +7,10 @@ export const messages = {
   loggedOut: () => 'The session ended while this call was running. Call the tool again.',
   noAccess: (workspace: string, realm: string) =>
     `No access to workspace ${workspace} in realm ${realm}. You are not a member of it, it does not exist, or it belongs to another realm (see list_workspaces).`,
-  realmNotAvailable: (realm: string, env: string) =>
-    `Realm ${realm} is not available on ${env}. Use default, or run with COLADA_ENV=prod.`,
-  unknownRealm: (value: string) => `Unknown realm "${value}". Use default unless the user names another realm.`,
+  realmUnknown: (host: string, status: number | null) =>
+    `Cannot read the Keycloak realm of ${host} (HTTP ${status ?? 'no response'}). Check COLADA_HOSTS.`,
+  duplicateRealm: (realm: string) => `Two hosts in COLADA_HOSTS use realm ${realm}. Keep only one of them.`,
+  unknownRealm: (value: string) => `Unknown realm "${value}". Leave realm out unless the user names another realm.`,
   invalidId: (field: string, value: string) => `${field} "${value}" is not a valid Colada id.`,
   forbidden: (path: string) =>
     `GET ${path} was refused (403): your role lacks access to this endpoint. Ask an admin for the permission.`,

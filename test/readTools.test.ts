@@ -333,16 +333,12 @@ describe('all tools', () => {
     })
   })
 
-  it.each([...backendTools.map(([tool]) => tool), 'logout'])(
-    'AC18: %s with a dedicated realm on stage gives the clear error, opens no login and sends no request',
-    async (tool) => {
-      const h = await setup()
-      const result = await h.call(tool, { realm: 'lidl', workspace: WS_A, eventId: EVENT_A, templateId: TEMPLATE_ID })
-      expect(result.body.error).toBe('Realm lidl is not available on stage. Use default, or run with COLADA_ENV=prod.')
-      expect(h.opened).toHaveLength(0)
-      expect(h.world.requests).toHaveLength(0)
+  it('AC18: with one host no tool has a realm parameter', async () => {
+    const h = await setup()
+    for (const tool of (await h.client.listTools()).tools) {
+      expect(Object.keys(tool.inputSchema.properties ?? {}), tool.name).not.toContain('realm')
     }
-  )
+  })
 
   it('tools/list has the six read tools and logout', async () => {
     const h = await setup()

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { fetchPage, PAGE_SIZE } from '../api/paging.js'
 import type { App } from '../app.js'
 import { checkEventId } from './ids.js'
-import { realmInput, runTool, workspaceInput } from './run.js'
+import { openRealm, realmShape, runTool, workspaceInput } from './run.js'
 
 type TemplateItem = Record<string, unknown>
 
@@ -26,13 +26,12 @@ export function registerListEmailTemplates(server: McpServer, app: App) {
     {
       description:
         'Lists all email templates of one event, without subject or body. Use get_email_template for the full template.',
-      inputSchema: { realm: realmInput, workspace: workspaceInput, eventId: z.string().describe('Event id') },
+      inputSchema: { ...realmShape(app), workspace: workspaceInput, eventId: z.string().describe('Event id') },
       annotations: { readOnlyHint: true }
     },
     (params) => {
-      const realm = params.realm || 'default'
-      return runTool(app, 'list_email_templates', params, realm, async (ctx) => {
-        const { session, directory } = app.realm(realm)
+      return runTool(app, 'list_email_templates', params, async (ctx) => {
+        const { session, directory } = await openRealm(app, ctx, params.realm)
         checkEventId(params.eventId)
         const workspace = await directory.resolve(params.workspace, ctx.state)
         ctx.workspace = workspace

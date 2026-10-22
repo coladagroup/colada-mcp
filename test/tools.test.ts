@@ -16,28 +16,26 @@ import {
 
 const STAGE = 'stage-admin.colada365.com'
 const PROD = 'admin.colada365.com'
-const LIDL = 'lidl-football-hub.com'
+const CLIENT = 'client.example.com'
 
 const harnesses: Harness[] = []
 
-async function setup(
-  options: { env?: 'stage' | 'prod'; loggedIn?: boolean; world?: FakeWorld; store?: FakeStore } = {}
-) {
-  const env = options.env ?? 'stage'
-  const host = env === 'stage' ? STAGE : PROD
+async function setup(options: { hosts?: string[]; loggedIn?: boolean; world?: FakeWorld; store?: FakeStore } = {}) {
+  const hosts = options.hosts ?? [STAGE]
+  const host = hosts[0] ?? STAGE
   const world = options.world ?? new FakeWorld()
   if (!world.realms.has(host)) {
     world.addRealm(host, {
       user: 'frank',
       members: [WS_A, WS_B],
-      workspaces: [workspace(WS_A, 'Alpha'), workspace(WS_B, 'Beta'), workspace(WS_FOREIGN, 'Lidl WS', 'lidl')]
+      workspaces: [workspace(WS_A, 'Alpha'), workspace(WS_B, 'Beta'), workspace(WS_FOREIGN, 'Client WS', 'client')]
     })
   }
   world.events.set(WS_A, new Map([[EVENT_A, { uid: EVENT_A, title: 'Gala A', nested: { x: [1, 2] } }]]))
   world.events.set(WS_B, new Map([[EVENT_B, { uid: EVENT_B, title: 'Gala B' }]]))
   const store = options.store ?? new FakeStore()
   if (options.loggedIn !== false && !store.values.has(host)) world.seedRefreshToken(host, store)
-  const harness = await createHarness(world, env, store)
+  const harness = await createHarness(world, hosts, store)
   harnesses.push(harness)
   return harness
 }
@@ -164,7 +162,7 @@ describe('login and session', () => {
     await first.client.close()
     harnesses.splice(harnesses.indexOf(first), 1)
 
-    const second = await createHarness(world, 'stage', store)
+    const second = await createHarness(world, [STAGE], store)
     harnesses.push(second)
     const result = await second.call('list_workspaces')
 
@@ -178,7 +176,12 @@ describe('login and session', () => {
     await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
     const result = await h.call('logout')
 
-    expect(result.body).toEqual({ realm: null, user: 'frank', workspace: null, message: 'Logged out from all realms.' })
+    expect(result.body).toEqual({
+      realm: 'default',
+      user: 'frank',
+      workspace: null,
+      message: 'Logged out from default.'
+    })
     expect(h.store.values.has(STAGE)).toBe(false)
 
     const backendBefore = h.world.backendRequests().length
@@ -416,58 +419,92 @@ describe('get_event and backend errors', () => {
 })
 
 describe('realms', () => {
-  async function prodWithLidl() {
+  async function prodWithClient() {
     const world = new FakeWorld()
-    world.addRealm(LIDL, {
-      user: 'frank-lidl',
+    world.addRealm(CLIENT, {
+      name: 'client',
+      user: 'frank-client',
       homeWorkspace: WS_FOREIGN,
       members: [],
       rotation: true,
-      workspaces: [workspace(WS_FOREIGN, 'Lidl WS', 'lidl'), workspace(WS_A, 'Alpha')]
+      workspaces: [workspace(WS_FOREIGN, 'Client WS', 'client'), workspace(WS_A, 'Alpha')]
     })
-    const h = await setup({ env: 'prod', world })
-    world.events.set(WS_FOREIGN, new Map([[EVENT_A, { uid: EVENT_A, title: 'Lidl event' }]]))
+    const h = await setup({ hosts: [PROD, CLIENT], world })
+    world.events.set(WS_FOREIGN, new Map([[EVENT_A, { uid: EVENT_A, title: 'Client event' }]]))
     return h
   }
 
-  it('AC15/AC18: on stage a dedicated realm gives a clear error, opens no login and sends no request', async () => {
-    const h = await setup()
-    for (const tool of ['list_workspaces', 'get_event']) {
-      const result = await h.call(tool, { realm: 'lidl', eventId: EVENT_A })
-      expect(result.body.error).toBe('Realm lidl is not available on stage. Use default, or run with COLADA_ENV=prod.')
-      expect(result.body.realm).toBe('lidl')
-    }
+  it('AC18: the realm of each host comes from its public config, once per process', async () => {
+    const h = await prodWithClient()
+    h.world.seedRefreshToken(CLIENT, h.store)
+    await h.call('list_workspaces')
+    await h.call('list_workspaces', { realm: 'client' })
+    await h.call('get_event', { realm: 'client', eventId: EVENT_A })
+    expect(h.world.configRequests.sort()).toEqual([PROD, CLIENT].sort())
+    const definitions = (await h.client.listTools()).tools
+    for (const tool of definitions) expect(Object.keys(tool.inputSchema.properties ?? {}), tool.name).toContain('realm')
+  })
+
+  it('AC18: an unreadable realm config gives a clear error, opens no login, and is read again on the next call', async () => {
+    const h = await setup({ loggedIn: false })
+    h.world.configStatus.set(STAGE, 404)
+    const result = await h.call('list_workspaces')
+    expect(result.body).toEqual({
+      realm: null,
+      user: null,
+      workspace: null,
+      error: `Cannot read the Keycloak realm of ${STAGE} (HTTP 404). Check COLADA_HOSTS.`
+    })
+    expect(h.opened).toHaveLength(0)
+    expect(h.world.requests).toHaveLength(0)
+
+    h.world.configStatus.delete(STAGE)
+    const next = await h.call('list_workspaces')
+    expect(next.body.error).toMatch(/^Login opened in your browser for realm default /)
+    expect(h.world.configRequests).toEqual([STAGE, STAGE])
+  })
+
+  it('AC18: two hosts with the same realm give a clear error and send no request', async () => {
+    const world = new FakeWorld()
+    world.addRealm(CLIENT, { user: 'frank-client' })
+    const h = await setup({ hosts: [PROD, CLIENT], world })
+    const result = await h.call('list_workspaces')
+    expect(result.body.error).toBe('Two hosts in COLADA_HOSTS use realm default. Keep only one of them.')
     expect(h.opened).toHaveLength(0)
     expect(h.world.requests).toHaveLength(0)
   })
 
-  it('AC16: realm lidl without a session logs in on the lidl host; afterwards calls go only there', async () => {
-    const h = await prodWithLidl()
-    const first = await h.call('list_workspaces', { realm: 'lidl' })
+  it('AC16: realm client without a session logs in on the client host; afterwards calls go only there', async () => {
+    const h = await prodWithClient()
+    const first = await h.call('list_workspaces', { realm: 'client' })
 
     expect(first.body.error).toBe(
-      `Login opened in your browser for realm lidl on ${LIDL}. Finish it, then call the tool again. If no browser tab opened, open this URL: ${h.opened[0]}`
+      `Login opened in your browser for realm client on ${CLIENT}. Finish it, then call the tool again. If no browser tab opened, open this URL: ${h.opened[0]}`
     )
-    expect(new URL(h.opened[0] ?? '').host).toBe(LIDL)
-    expect(new URL(h.opened[0] ?? '').pathname).toBe('/auth/realms/lidl/protocol/openid-connect/auth')
+    expect(new URL(h.opened[0] ?? '').host).toBe(CLIENT)
+    expect(new URL(h.opened[0] ?? '').pathname).toBe('/auth/realms/client/protocol/openid-connect/auth')
     expect(h.world.backendRequests()).toHaveLength(0)
 
     await h.completeLogin()
-    const list = await h.call('list_workspaces', { realm: 'lidl' })
-    expect(list.body).toMatchObject({ realm: 'lidl', user: 'frank-lidl' })
-    expect(list.body.workspaces).toEqual([{ id: WS_FOREIGN, name: 'Lidl WS', realm: 'lidl' }])
+    const list = await h.call('list_workspaces', { realm: 'client' })
+    expect(list.body).toMatchObject({ realm: 'client', user: 'frank-client' })
+    expect(list.body.workspaces).toEqual([{ id: WS_FOREIGN, name: 'Client WS', realm: 'client' }])
 
-    const event = await h.call('get_event', { realm: 'lidl', eventId: EVENT_A })
-    expect(event.body).toMatchObject({ realm: 'lidl', workspace: { id: WS_FOREIGN }, event: { title: 'Lidl event' } })
-    expect(h.world.requests.every((r) => r.url.host === LIDL)).toBe(true)
+    const event = await h.call('get_event', { realm: 'client', eventId: EVENT_A })
+    expect(event.body).toMatchObject({
+      realm: 'client',
+      workspace: { id: WS_FOREIGN },
+      event: { title: 'Client event' }
+    })
+    expect(h.world.requests.every((r) => r.url.host === CLIENT)).toBe(true)
   })
 
-  it('AC17: default and lidl sessions stay apart; logout lidl keeps default; logout without realm ends both', async () => {
-    const h = await prodWithLidl()
-    h.world.seedRefreshToken(LIDL, h.store)
+  it('AC17: default and client sessions stay apart; logout client keeps default; logout without realm ends both', async () => {
+    const h = await prodWithClient()
+    h.world.seedRefreshToken(CLIENT, h.store)
 
     await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
-    await h.call('get_event', { realm: 'lidl', eventId: EVENT_A })
+    await h.call('get_event', { realm: 'client', eventId: EVENT_A })
     for (const request of h.world.requests) {
       const token = request.form?.get('refresh_token') ?? (request.headers.authorization ?? '').replace('Bearer ', '')
       expect(
@@ -475,21 +512,21 @@ describe('realms', () => {
       ).toBe(true)
     }
 
-    const lidlOut = await h.call('logout', { realm: 'lidl' })
-    expect(lidlOut.body).toMatchObject({ realm: 'lidl', user: 'frank-lidl', message: 'Logged out from lidl.' })
-    expect(h.store.values.has(LIDL)).toBe(false)
+    const clientOut = await h.call('logout', { realm: 'client' })
+    expect(clientOut.body).toMatchObject({ realm: 'client', user: 'frank-client', message: 'Logged out from client.' })
+    expect(h.store.values.has(CLIENT)).toBe(false)
     expect(h.store.values.has(PROD)).toBe(true)
     expect((await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })).isError).toBe(false)
-    const lidlBackendCalls = h.world.backendRequests(LIDL).length
-    const lidlAgain = await h.call('get_event', { realm: 'lidl', eventId: EVENT_A })
-    expect(lidlAgain.body.error).toMatch(/^Login opened in your browser for realm lidl /)
-    expect(h.world.backendRequests(LIDL)).toHaveLength(lidlBackendCalls)
+    const clientBackendCalls = h.world.backendRequests(CLIENT).length
+    const clientAgain = await h.call('get_event', { realm: 'client', eventId: EVENT_A })
+    expect(clientAgain.body.error).toMatch(/^Login opened in your browser for realm client /)
+    expect(h.world.backendRequests(CLIENT)).toHaveLength(clientBackendCalls)
 
     const allOut = await h.call('logout')
     expect(allOut.body.message).toBe('Logged out from all realms.')
     expect(h.store.values.size).toBe(0)
     const backendCalls = h.world.backendRequests().length
-    for (const args of [{ workspace: WS_A }, { realm: 'lidl' }]) {
+    for (const args of [{ workspace: WS_A }, { realm: 'client' }]) {
       const again = await h.call('get_event', { ...args, eventId: EVENT_A })
       expect(again.body.error).toMatch(/^Login opened in your browser /)
     }
@@ -497,10 +534,10 @@ describe('realms', () => {
   })
 
   it('AC17: logout without realm ends every other realm when the keyring fails for one', async () => {
-    const h = await prodWithLidl()
-    h.world.seedRefreshToken(LIDL, h.store)
+    const h = await prodWithClient()
+    h.world.seedRefreshToken(CLIENT, h.store)
     await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
-    await h.call('get_event', { realm: 'lidl', eventId: EVENT_A })
+    await h.call('get_event', { realm: 'client', eventId: EVENT_A })
     const remove = h.store.delete.bind(h.store)
     h.store.delete = async (account) => {
       if (account === PROD) throw new Error('store locked')
@@ -513,17 +550,17 @@ describe('realms', () => {
     expect(result.body.error).toBe(
       'Could not remove the stored session of realm default from the OS keyring. Call logout again.'
     )
-    expect(h.store.values.has(LIDL)).toBe(false)
-    const lidlBackendCalls = h.world.backendRequests(LIDL).length
-    const lidl = await h.call('get_event', { realm: 'lidl', eventId: EVENT_A })
-    expect(lidl.body.error).toMatch(/^Login opened in your browser for realm lidl /)
-    expect(h.world.backendRequests(LIDL)).toHaveLength(lidlBackendCalls)
+    expect(h.store.values.has(CLIENT)).toBe(false)
+    const clientBackendCalls = h.world.backendRequests(CLIENT).length
+    const client = await h.call('get_event', { realm: 'client', eventId: EVENT_A })
+    expect(client.body.error).toMatch(/^Login opened in your browser for realm client /)
+    expect(h.world.backendRequests(CLIENT)).toHaveLength(clientBackendCalls)
   })
 
   it('D28: a rotated refresh token replaces the stored one; token requests of one realm run one at a time', async () => {
-    const h = await prodWithLidl()
-    h.world.seedRefreshToken(LIDL, h.store)
-    const before = h.store.values.get(LIDL)
+    const h = await prodWithClient()
+    h.world.seedRefreshToken(CLIENT, h.store)
+    const before = h.store.values.get(CLIENT)
     h.world.tokenDelayMs = 20
 
     let active = 0
@@ -541,17 +578,17 @@ describe('realms', () => {
     }
 
     const results = await Promise.all([
-      h.call('list_workspaces', { realm: 'lidl' }),
-      h.call('get_event', { realm: 'lidl', workspace: WS_FOREIGN, eventId: EVENT_A })
+      h.call('list_workspaces', { realm: 'client' }),
+      h.call('get_event', { realm: 'client', workspace: WS_FOREIGN, eventId: EVENT_A })
     ])
 
     expect(results.map((r) => r.isError)).toEqual([false, false])
     expect(maxActive).toBe(1)
-    const presented = h.world.tokenRequests(LIDL).map((r) => r.form?.get('refresh_token'))
+    const presented = h.world.tokenRequests(CLIENT).map((r) => r.form?.get('refresh_token'))
     expect(presented[0]).toBe(before)
     expect(presented[1]).not.toBe(before)
-    expect(h.store.values.get(LIDL)).not.toBe(before)
-    expect(h.world.realms.get(LIDL)?.validRefreshTokens.has(h.store.values.get(LIDL) ?? '')).toBe(true)
+    expect(h.store.values.get(CLIENT)).not.toBe(before)
+    expect(h.world.realms.get(CLIENT)?.validRefreshTokens.has(h.store.values.get(CLIENT) ?? '')).toBe(true)
   })
 })
 
@@ -577,22 +614,26 @@ describe('NFR: no token in answers or logs', () => {
 })
 
 describe('tool definitions', () => {
-  it('name no customer realm in tools/list, in stage and prod', async () => {
-    for (const env of ['stage', 'prod'] as const) {
-      const h = await setup({ env })
+  it('name no customer host or realm in tools/list', async () => {
+    const world = new FakeWorld()
+    world.addRealm(CLIENT, { name: 'client', user: 'frank-client' })
+    for (const hosts of [[STAGE], [PROD, CLIENT]]) {
+      const h = await setup({ hosts, world })
       const definitions = JSON.stringify(await h.client.listTools())
-      expect(definitions).not.toMatch(/vw|abiomed|lidl/i)
+      expect(definitions).not.toMatch(/client|colada365/i)
     }
   })
 
   it('an unknown realm gives an error without the realm list and sends no request', async () => {
-    const h = await setup({ env: 'prod' })
+    const world = new FakeWorld()
+    world.addRealm(CLIENT, { name: 'client', user: 'frank-client' })
+    const h = await setup({ hosts: [PROD, CLIENT], world })
     const result = await h.call('get_event', { realm: 'acme', eventId: EVENT_A })
     expect(result.body).toMatchObject({
       realm: 'acme',
       user: null,
       workspace: null,
-      error: 'Unknown realm "acme". Use default unless the user names another realm.'
+      error: 'Unknown realm "acme". Leave realm out unless the user names another realm.'
     })
     expect(h.opened).toHaveLength(0)
     expect(h.world.requests).toHaveLength(0)

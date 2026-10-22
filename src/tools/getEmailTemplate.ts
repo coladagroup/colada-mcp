@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { callBackend } from '../api/backend.js'
 import type { App } from '../app.js'
 import { checkUuid } from './ids.js'
-import { realmInput, runTool, workspaceInput } from './run.js'
+import { openRealm, realmShape, runTool, workspaceInput } from './run.js'
 
 export function registerGetEmailTemplate(server: McpServer, app: App) {
   server.registerTool(
@@ -11,7 +11,7 @@ export function registerGetEmailTemplate(server: McpServer, app: App) {
     {
       description: 'Returns one email template of an event, with subject and body, as the raw backoffice JSON.',
       inputSchema: {
-        realm: realmInput,
+        ...realmShape(app),
         workspace: workspaceInput,
         eventId: z.string().describe('Event id'),
         templateId: z.string().describe('Email template id from list_email_templates')
@@ -19,9 +19,8 @@ export function registerGetEmailTemplate(server: McpServer, app: App) {
       annotations: { readOnlyHint: true }
     },
     (params) => {
-      const realm = params.realm || 'default'
-      return runTool(app, 'get_email_template', params, realm, async (ctx) => {
-        const { session, directory } = app.realm(realm)
+      return runTool(app, 'get_email_template', params, async (ctx) => {
+        const { session, directory } = await openRealm(app, ctx, params.realm)
         checkUuid('eventId', params.eventId)
         checkUuid('templateId', params.templateId)
         const workspace = await directory.resolve(params.workspace, ctx.state)

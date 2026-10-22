@@ -3,7 +3,6 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { App } from '../src/app.js'
 import type { TokenStore } from '../src/auth/tokenStore.js'
 import type { CallLogEntry } from '../src/callLog.js'
-import type { Env } from '../src/config.js'
 import { createServer } from '../src/server.js'
 
 export const WS_A = 'aaaaaaaa-0000-0000-0000-000000000001'
@@ -35,6 +34,7 @@ export class FakeStore implements TokenStore {
 }
 
 export interface FakeRealm {
+  name: string
   user: string
   homeWorkspace: string | undefined
   members: string[]
@@ -62,6 +62,8 @@ export class FakeWorld {
   now = 1_800_000_000
   tokenTtl = 300
   readonly requests: Recorded[] = []
+  readonly configRequests: string[] = []
+  readonly configStatus = new Map<string, number>()
   readonly issued: string[] = []
   readonly realms = new Map<string, FakeRealm>()
   readonly events = new Map<string, Map<string, unknown>>()
@@ -73,6 +75,7 @@ export class FakeWorld {
 
   addRealm(host: string, realm: Partial<FakeRealm> & { user: string }) {
     this.realms.set(host, {
+      name: 'default',
       homeWorkspace: WS_A,
       members: [],
       workspaces: [],
@@ -122,6 +125,7 @@ export class FakeWorld {
 
   readonly fetch: typeof fetch = async (input, init) => {
     const url = new URL(String(input))
+    if (url.pathname === '/_gw/s-ecosystem/oauthclients/colada-mcp/config') return this.config(url.host, init)
     const headers = Object.fromEntries(new Headers(init?.headers).entries())
     const form = typeof init?.body === 'string' ? new URLSearchParams(init.body) : null
     this.requests.push({ url, method: init?.method ?? 'GET', headers, form, redirect: init?.redirect })
@@ -133,6 +137,16 @@ export class FakeWorld {
     }
     if (this.backendDelayMs) await new Promise((r) => setTimeout(r, this.backendDelayMs))
     return this.backend(url, realm, headers)
+  }
+
+  private config(host: string, init: RequestInit | undefined) {
+    this.configRequests.push(host)
+    if (init?.redirect !== 'error') throw new Error('config request must not follow redirects')
+    const realm = this.realms.get(host)
+    if (!realm) throw new TypeError('fetch failed')
+    const status = this.configStatus.get(host)
+    if (status) return json(status, undefined)
+    return json(200, { 'auth-server-url': '/auth', realm: realm.name, resource: 'react-spa' })
   }
 
   private token(host: string, realm: FakeRealm, form: URLSearchParams) {
@@ -195,13 +209,19 @@ export interface Harness {
   close: () => Promise<void>
 }
 
-export async function createHarness(world: FakeWorld, env: Env = 'stage', store = new FakeStore()): Promise<Harness> {
+export const STAGE_HOST = 'stage-admin.colada365.com'
+
+export async function createHarness(
+  world: FakeWorld,
+  hosts: string[] = [STAGE_HOST],
+  store = new FakeStore()
+): Promise<Harness> {
   const opened: string[] = []
   const logs: CallLogEntry[] = []
   const stderr: string[] = []
   const hooks: { onOpen: ((url: string) => Promise<void>) | null } = { onOpen: null }
   const app = new App({
-    env,
+    hosts,
     fetch: world.fetch,
     store,
     now: () => world.now,
@@ -243,7 +263,7 @@ export async function createHarness(world: FakeWorld, env: Env = 'stage', store 
       return globalThis.fetch(`${redirect}/?state=${encodeURIComponent(state)}&code=test-code`)
     },
     async close() {
-      for (const realm of app.availableRealms()) await app.realm(realm).session.logout()
+      for (const { session } of app.openedRealms()) await session.logout()
       await client.close()
       await server.close()
     }
