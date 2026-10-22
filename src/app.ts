@@ -7,6 +7,7 @@ import { WorkspaceDirectory } from './workspaces.js'
 
 export interface AppDeps extends SessionDeps {
   hosts: string[]
+  allowPersonalData: boolean
   callLog: CallLog
 }
 

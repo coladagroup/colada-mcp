@@ -26,7 +26,7 @@ export async function fetchPage(
   )
   const total = response.headers.get('content-range')?.match(/\/(\d+)$/)?.[1]
   if (total === undefined || !Array.isArray(response.body)) {
-    throw new ToolError(messages.failed(request.path, response.status))
+    throw new ToolError(messages.failed('GET', request.path, response.status))
   }
   return { items: response.body, total: Number(total) }
 }

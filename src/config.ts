@@ -20,3 +20,7 @@ export function parseHosts(env: Record<string, string | undefined>): string[] {
   if (new Set(hosts).size !== hosts.length) throw new Error('COLADA_HOSTS lists the same host twice.')
   return hosts
 }
+
+export function parseAllowPersonalData(env: Record<string, string | undefined>): boolean {
+  return env.COLADA_ALLOW_PERSONAL_DATA === 'true'
+}

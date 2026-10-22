@@ -44,12 +44,12 @@ export class RealmSession {
     this.endListeners.push(listener)
   }
 
-  baseToken(): Promise<string> {
-    return this.token(BASE_KEY, null)
+  baseToken(minValidity = MIN_VALIDITY_SECONDS): Promise<string> {
+    return this.token(BASE_KEY, null, minValidity)
   }
 
-  workspaceToken(workspaceId: string): Promise<string> {
-    return this.token(`ws:${workspaceId}`, workspaceId)
+  workspaceToken(workspaceId: string, minValidity = MIN_VALIDITY_SECONDS): Promise<string> {
+    return this.token(`ws:${workspaceId}`, workspaceId, minValidity)
   }
 
   invalidate(workspaceId: string | null) {
@@ -82,10 +82,10 @@ export class RealmSession {
     for (const listener of this.endListeners) listener()
   }
 
-  private token(key: string, workspaceId: string | null): Promise<string> {
+  private token(key: string, workspaceId: string | null, minValidity: number): Promise<string> {
     if (this.login) return Promise.reject(new ToolError(messages.loginInProgress()))
     const cached = this.tokens.get(key)
-    if (cached && cached.exp - this.deps.now() >= MIN_VALIDITY_SECONDS) return Promise.resolve(cached.token)
+    if (cached && cached.exp - this.deps.now() >= minValidity) return Promise.resolve(cached.token)
     const running = this.inflight.get(key)
     if (running) return running
     const request = this.serial(() => this.requestToken(key, workspaceId)).finally(() => this.inflight.delete(key))

@@ -207,10 +207,13 @@ describe('backend responses', () => {
   it('a 2xx answer with a broken JSON body is an error, not null data', async () => {
     const world = stageWorld()
     const h = await harness(world)
-    world.backendRaw.set(`/_gw/s-events/api/events/${EVENT_A}`, () => new Response('{"uid":', { status: 200 }))
+    world.backendRaw.set(
+      `/_gw/s-events/api/events/${EVENT_A}`,
+      () => new Response('{"uid":', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    )
     const result = await h.call('get_event', { workspace: WS_A, eventId: EVENT_A })
     expect(result.isError).toBe(true)
-    expect(result.body.error).toBe(`GET /_gw/s-events/api/events/${EVENT_A} failed (200).`)
+    expect(result.body.error).toBe(`GET /_gw/s-events/api/events/${EVENT_A} returned invalid JSON (200).`)
   })
 
   it('a 2xx answer whose body stream fails is an error', async () => {
