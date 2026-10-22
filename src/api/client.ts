@@ -69,7 +69,7 @@ export class ApiClient {
 
 async function readBody(response: Response, maxBytes: number, method: string, path: string): Promise<BodyResult> {
   const tooLarge = {
-    reason: 'it is larger than 100 KB',
+    reason: 'it is larger than 500 KB',
     error: new ResponseTooLargeError(messages.tooLarge(method, path))
   }
   if (Number(response.headers.get('content-length') ?? 0) > maxBytes) {

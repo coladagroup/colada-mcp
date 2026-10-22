@@ -114,8 +114,8 @@ describe('ApiClient.request (CONTRACT §2, §5)', () => {
     )
   })
 
-  describe('100 KB limit (AC28)', () => {
-    const tooLarge = `The response of GET ${PATH} is larger than 100 KB and is not returned. Ask for less: a smaller Range (for example "Range: events 0-20"), a narrower query, or a projection in the path (for example /api/events:(title,start)).`
+  describe('500 KB limit (AC28)', () => {
+    const tooLarge = `The response of GET ${PATH} is larger than 500 KB and is not returned. Ask for less: a smaller Range (for example "Range: events 0-20"), a narrower query, or a projection in the path (for example /api/events:(title,start)).`
     const jsonOfSize = (bytes: number) => `"${'a'.repeat(bytes - 2)}"`
     const streamed = (text: string) =>
       new Response(
@@ -129,13 +129,13 @@ describe('ApiClient.request (CONTRACT §2, §5)', () => {
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       )
 
-    it('accepts exactly 100 KB', async () => {
+    it('accepts exactly 500 KB', async () => {
       const { client } = stubClient(() => streamed(jsonOfSize(MAX_RESPONSE_BYTES)))
       const response = await client.request('GET', 'h.example.com', PATH, 'tkn', {}, { maxBytes: MAX_RESPONSE_BYTES })
       expect(typeof response.body).toBe('string')
     })
 
-    it('refuses 100 KB + 1 byte read from the stream', async () => {
+    it('refuses 500 KB + 1 byte read from the stream', async () => {
       const { client } = stubClient(() => streamed(jsonOfSize(MAX_RESPONSE_BYTES + 1)))
       expect(
         await errorOf(client.request('GET', 'h.example.com', PATH, 'tkn', {}, { maxBytes: MAX_RESPONSE_BYTES }))
@@ -388,7 +388,7 @@ describe('review fixes: HTTP', () => {
     `POST ${PATH} succeeded (${status}), but its response body is not returned: ${reason}. The change was applied: do not send it again. Read the object with api_get if you need it.`
 
   it.each([
-    ['too large', () => json(201, 'x'.repeat(MAX_RESPONSE_BYTES + 10)), applied(201, 'it is larger than 100 KB')],
+    ['too large', () => json(201, 'x'.repeat(MAX_RESPONSE_BYTES + 10)), applied(201, 'it is larger than 500 KB')],
     [
       'not JSON',
       () => new Response('a,b', { status: 200, headers: { 'Content-Type': 'text/csv' } }),

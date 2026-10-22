@@ -26,7 +26,7 @@ export const messages = {
   writeUnauthorized: (method: string, path: string) =>
     `${method} ${path} was refused (401): the session token was not accepted. The request was not sent again. Call api_write again; the user approves it again.`,
   tooLarge: (method: string, path: string) =>
-    `The response of ${method} ${path} is larger than 100 KB and is not returned. Ask for less: a smaller Range (for example "Range: events 0-20"), a narrower query, or a projection in the path (for example /api/events:(title,start)).`,
+    `The response of ${method} ${path} is larger than 500 KB and is not returned. Ask for less: a smaller Range (for example "Range: events 0-20"), a narrower query, or a projection in the path (for example /api/events:(title,start)).`,
   writeBodyNotReturned: (method: string, path: string, status: number, reason: string) =>
     `${method} ${path} succeeded (${status}), but its response body is not returned: ${reason}. The change was applied: do not send it again. Read the object with api_get if you need it.`,
   writeNoResponse: (method: string, path: string) =>
@@ -44,7 +44,7 @@ export const messages = {
   apiDocForbidden: () =>
     'get_api_doc was refused (403): your role lacks the permission api:api-doc:view. Ask an admin.',
   apiDocTooLarge: (service: string, doc: string) =>
-    `The API doc ${service}/${doc} is larger than 100 KB and is not returned.`,
+    `The API doc ${service}/${doc} is larger than 500 KB and is not returned.`,
   serviceNotAllowed: (service: string) =>
     `Service "${service}" is not allowed. Pass a backoffice service name like s-events (lower case). CONSR services (s-consr-*) cannot be called with this token.`,
   pathNotAllowed: (path: string, reason: string) =>

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { MAX_RESPONSE_BYTES } from '../src/policy/index.js'
 import {
   createHarness,
   EVENT_A,
@@ -76,15 +77,15 @@ describe('api_get (AC19)', () => {
     expect(Object.keys(request?.headers ?? {}).filter((name) => name.startsWith('x-colada'))).toEqual([])
   })
 
-  it('refuses a body over 100 KB (AC28)', async () => {
+  it('refuses a body over 500 KB (AC28)', async () => {
     const h = await setup()
-    h.world.backendRaw.set(RESOURCE, () => json(200, 'x'.repeat(102_400)))
+    h.world.backendRaw.set(RESOURCE, () => json(200, 'x'.repeat(MAX_RESPONSE_BYTES)))
     const result = await h.call('api_get', {
       workspace: WS_A,
       service: 's-events-resources',
       path: '/api/events/e1/resources/r1'
     })
-    expect(result.body.error).toContain('is larger than 100 KB and is not returned')
+    expect(result.body.error).toContain('is larger than 500 KB and is not returned')
     expect(result.text).not.toContain('xxxx')
   })
 })
@@ -300,10 +301,17 @@ describe('get_api_doc (AC29)', () => {
     )
   })
 
-  it('a doc over 100 KB is refused', async () => {
+  it('a 144 KB doc is returned (limit raised to 500 KB at Gate 10)', async () => {
     const h = await withCatalog()
-    h.world.backendRaw.set(`${CATALOG}/s-events/events`, () => yaml('x'.repeat(102_401)))
+    h.world.backendRaw.set(`${CATALOG}/s-events/events`, () => yaml('x'.repeat(144_430)))
     const result = await h.call('get_api_doc', { service: 's-events', doc: 'events' })
-    expect(result.body.error).toBe('The API doc s-events/events is larger than 100 KB and is not returned.')
+    expect(result.body.apiDoc).toHaveLength(144_430)
+  })
+
+  it('a doc over 500 KB is refused', async () => {
+    const h = await withCatalog()
+    h.world.backendRaw.set(`${CATALOG}/s-events/events`, () => yaml('x'.repeat(MAX_RESPONSE_BYTES + 1)))
+    const result = await h.call('get_api_doc', { service: 's-events', doc: 'events' })
+    expect(result.body.error).toBe('The API doc s-events/events is larger than 500 KB and is not returned.')
   })
 })

@@ -10,7 +10,7 @@ export function registerApiGet(server: McpServer, app: App) {
     'api_get',
     {
       description:
-        'Sends one GET to a Colada backoffice service in one workspace, with your own roles. Returns the HTTP status, the JSON body and the headers Content-Range, ETag, X-ETag and Location. Paging: pass `Range: <unit> <start>-<end>` (end is exclusive). Bodies over 100 KB are refused: ask for less (Range, query, or a projection like /api/events:(title,start)). Services with personal data are off unless the user turned them on.',
+        'Sends one GET to a Colada backoffice service in one workspace, with your own roles. Returns the HTTP status, the JSON body and the headers Content-Range, ETag, X-ETag and Location. Paging: pass `Range: <unit> <start>-<end>` (end is exclusive). Bodies over 500 KB are refused: ask for less (Range, query, or a projection like /api/events:(title,start)). Services with personal data are off unless the user turned them on.',
       inputSchema: {
         ...realmShape(app),
         workspace: workspaceInput,
