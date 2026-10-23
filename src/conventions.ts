@@ -4,7 +4,7 @@ export const INSTRUCTIONS = `Colada backoffice API through get_api_doc, api_get 
 - Find the route in get_api_doc first. Do not guess paths.
 - Fewer fields on lists: projection in the path, /api/events:(title,start).
 - Filter: query q, for example (title=*expo*)&(archived=!true). A q the service cannot parse is dropped silently and the call returns everything: check the total and a few items.
-- To change a record: read it, take the revision from ETag (or X-ETag), change only what is needed, send the write with If-Match: <revision>. 409 means someone changed it: read again.
+- To change a record: read it, take the revision from X-ETag, change only what is needed, send the write with If-Match: <revision>. 409 means someone changed it: read again.
 - Some PATCH and PUT routes replace a whole map or structure (guest attributes on PATCH /guests/{id}, email template l10n, form structure). Send the complete value.
 - Before a series of writes, show the user the planned calls and wait for a yes. Try a bulk change on one record first.
 - Details and service rules: read the resource ${CONVENTIONS_URI}.`
@@ -41,9 +41,9 @@ Rules that hold for the backoffice services behind /_gw/<service>/api. The api-d
 
 ## Writing
 
-- Revision: every read of one record and every write return "ETag: <revision>" (a plain number; some services also send X-ETag). Send it back as "If-Match: <revision>".
+- Revision: every read of one record and every write return "X-ETag: <revision>", a plain number (the services send ETag, the gateway renames it to X-ETag). Send it back as "If-Match: <revision>".
 - Without If-Match most update routes answer 400; with an old revision 409. Then read again, merge your change, retry.
-- Create (POST) usually answers 201 with the record and ETag. Updates answer 204 with ETag, or 200/201 with the record. Check the api-doc of the route.
+- Create (POST) usually answers 201 with the record and X-ETag. Updates answer 204 with X-ETag, or 200/201 with the record. Check the api-doc of the route.
 - PATCH changes only the top-level fields you send. A nested object or list is replaced as a whole: send its complete value.
 - "$unset" as a value removes a field. null is ignored on most PATCH routes. Required fields cannot be removed.
 - Custom fields are named x_* . On events they go in the body map ext ({"ext": {"x_code": "A1"}}). On guests they are normal keys of attributes.
