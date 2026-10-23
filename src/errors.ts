@@ -29,6 +29,8 @@ export const messages = {
     `The response of ${method} ${path} is larger than 500 KB and is not returned. Ask for less: a smaller Range (for example "Range: events 0-20"), a narrower query, or a projection in the path (for example /api/events:(title,start)).`,
   writeBodyNotReturned: (method: string, path: string, status: number, reason: string) =>
     `${method} ${path} succeeded (${status}), but its response body is not returned: ${reason}. The change was applied: do not send it again. Read the object with api_get if you need it.`,
+  writeBudget: (method: string, path: string, limit: number) =>
+    `${method} ${path} was not sent: this server allows at most ${limit} writes per minute. Nothing was changed. Wait a minute and send it again, or split the job into smaller parts.`,
   writeNoResponse: (method: string, path: string) =>
     `${method} ${path} got no response (timeout or network error). The change may have been applied: read the object with api_get before you send it again.`,
   invalidJson: (method: string, path: string, status: number) => `${method} ${path} returned invalid JSON (${status}).`,
