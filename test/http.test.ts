@@ -205,15 +205,15 @@ describe('callBackend (CONTRACT §2, §5)', () => {
     [403, `PUT ${PATH} was refused (403): your role lacks access to this endpoint. Ask an admin for the permission.`],
     [
       409,
-      `PUT ${PATH} was refused (409): the object changed since you read it. Read it again with api_get and pass the new ETag as If-Match.`
+      `PUT ${PATH} was refused (409): the object changed since you read it, or a business rule refused it. Read it again with api_get and retry once with the new X-ETag value as If-Match; if it is refused again, stop and tell the user.`
     ],
     [
       412,
-      `PUT ${PATH} was refused (412): the object changed since you read it. Read it again with api_get and pass the new ETag as If-Match.`
+      `PUT ${PATH} was refused (412): the object changed since you read it, or a business rule refused it. Read it again with api_get and retry once with the new X-ETag value as If-Match; if it is refused again, stop and tell the user.`
     ],
     [
       428,
-      `PUT ${PATH} was refused (428): this route needs If-Match. Read the object with api_get and pass its ETag as If-Match.`
+      `PUT ${PATH} was refused (428): this route needs If-Match. Read the object with api_get and pass its X-ETag value as If-Match.`
     ],
     [500, `PUT ${PATH} failed (500).`]
   ])('maps %i to its text with the method', async (status, message) => {
