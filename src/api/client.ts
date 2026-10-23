@@ -5,6 +5,7 @@ export interface ApiResponse {
   headers: Headers
   body: unknown
   bodyNote?: string
+  errorText?: string
 }
 
 export interface RequestOptions {
@@ -100,8 +101,12 @@ export class ApiClient {
     }
     options.onStatus?.(response.status)
     if (response.status < 200 || response.status >= 300) {
-      await response.body?.cancel().catch(() => undefined)
-      return { status: response.status, headers: response.headers, body: null }
+      return {
+        status: response.status,
+        headers: response.headers,
+        body: null,
+        errorText: await readErrorText(response)
+      }
     }
     const result = await readBody(response, options.maxBytes ?? Number.POSITIVE_INFINITY, method, path)
     if ('body' in result) return { status: response.status, headers: response.headers, body: result.body }
@@ -160,4 +165,26 @@ async function readBody(response: Response, maxBytes: number, method: string, pa
       error: new ToolError(messages.invalidJson(method, path, response.status))
     }
   }
+}
+
+const ERROR_TEXT_MAX_CHARS = 500
+
+async function readErrorText(response: Response): Promise<string | undefined> {
+  const reader = response.body?.getReader()
+  if (!reader) return undefined
+  const decoder = new TextDecoder()
+  let text = ''
+  try {
+    while (text.length < ERROR_TEXT_MAX_CHARS) {
+      const { done, value } = await reader.read()
+      if (done) break
+      text += decoder.decode(value, { stream: true })
+    }
+  } catch {
+    return undefined
+  } finally {
+    await reader.cancel().catch(() => undefined)
+  }
+  const trimmed = text.trim().slice(0, ERROR_TEXT_MAX_CHARS)
+  return trimmed === '' ? undefined : trimmed
 }

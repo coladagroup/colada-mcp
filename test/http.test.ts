@@ -205,15 +205,15 @@ describe('callBackend (CONTRACT §2, §5)', () => {
     [403, `PUT ${PATH} was refused (403): your role lacks access to this endpoint. Ask an admin for the permission.`],
     [
       409,
-      `PUT ${PATH} was refused (409): the object changed since you read it. Read it again with api_get and pass the new ETag as If-Match.`
+      `PUT ${PATH} was refused (409): the object changed since you read it, or a business rule refused it. Read it again with api_get and retry once with the new X-ETag value as If-Match; if it is refused again, stop and tell the user.`
     ],
     [
       412,
-      `PUT ${PATH} was refused (412): the object changed since you read it. Read it again with api_get and pass the new ETag as If-Match.`
+      `PUT ${PATH} was refused (412): the object changed since you read it, or a business rule refused it. Read it again with api_get and retry once with the new X-ETag value as If-Match; if it is refused again, stop and tell the user.`
     ],
     [
       428,
-      `PUT ${PATH} was refused (428): this route needs If-Match. Read the object with api_get and pass its ETag as If-Match.`
+      `PUT ${PATH} was refused (428): this route needs If-Match. Read the object with api_get and pass its X-ETag value as If-Match.`
     ],
     [500, `PUT ${PATH} failed (500).`]
   ])('maps %i to its text with the method', async (status, message) => {
@@ -488,6 +488,39 @@ describe('second opinion: log fields are picked, not spread', () => {
     ])
     expect(line).not.toContain('BODYVALUE')
     expect(line).not.toContain('IFMATCHVALUE')
+  })
+})
+
+describe('service error text', () => {
+  it('adds the text of a failed response to the message', async () => {
+    const { world, session } = await setup()
+    world.backendRaw.set(PATH, () => new Response('GuestChanges.firstName is too long', { status: 400 }))
+    const request = { workspaceId: WS_A, method: 'PUT', path: PATH }
+    expect(await errorOf(callBackend(new ApiClient(world.fetch), session, request, { httpStatus: null }))).toBe(
+      `PUT ${PATH} failed (400). The service said: GuestChanges.firstName is too long`
+    )
+  })
+
+  it('cuts the text at 500 characters', async () => {
+    const { world, session } = await setup()
+    world.backendRaw.set(PATH, () => new Response('x'.repeat(5000), { status: 409 }))
+    const request = { workspaceId: WS_A, method: 'PUT', path: PATH }
+    const message = await errorOf(callBackend(new ApiClient(world.fetch), session, request, { httpStatus: null }))
+    expect(message?.endsWith(` The service said: ${'x'.repeat(500)}`)).toBe(true)
+  })
+
+  it('does not write the text to the call log', async () => {
+    const { h, world } = await setup()
+    world.backendRaw.set('/_gw/s-events/api/events/e1', () => new Response('REASONMARK', { status: 400 }))
+    const result = await h.call('api_write', {
+      workspace: WS_A,
+      method: 'PUT',
+      service: 's-events',
+      path: '/api/events/e1',
+      body: {}
+    })
+    expect(String(result.body.error)).toContain('REASONMARK')
+    expect(JSON.stringify(h.logs)).not.toContain('REASONMARK')
   })
 })
 

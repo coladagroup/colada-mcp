@@ -20,9 +20,9 @@ export const messages = {
   notFound: (method: string, path: string, workspace: string) =>
     `${method} ${path} returned 404 in workspace ${workspace}: the object or the route does not exist. Check the path with get_api_doc.`,
   conflict: (method: string, path: string, status: number) =>
-    `${method} ${path} was refused (${status}): the object changed since you read it. Read it again with api_get and pass the new ETag as If-Match.`,
+    `${method} ${path} was refused (${status}): the object changed since you read it, or a business rule refused it. Read it again with api_get and retry once with the new X-ETag value as If-Match; if it is refused again, stop and tell the user.`,
   ifMatchRequired: (method: string, path: string) =>
-    `${method} ${path} was refused (428): this route needs If-Match. Read the object with api_get and pass its ETag as If-Match.`,
+    `${method} ${path} was refused (428): this route needs If-Match. Read the object with api_get and pass its X-ETag value as If-Match.`,
   writeUnauthorized: (method: string, path: string) =>
     `${method} ${path} was refused (401): the session token was not accepted. The request was not sent again. Call api_write again; the user approves it again.`,
   tooLarge: (method: string, path: string) =>

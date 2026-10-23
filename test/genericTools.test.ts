@@ -42,7 +42,14 @@ describe('tools/list (AC24, AC32)', () => {
   it('offers exactly the five phase 2 tools with the CONTRACT annotations', async () => {
     const h = await setup()
     const { tools } = await h.client.listTools()
-    expect(tools.map((tool) => tool.name)).toEqual(['list_workspaces', 'get_api_doc', 'api_get', 'api_write', 'logout'])
+    expect(tools.map((tool) => tool.name)).toEqual([
+      'list_workspaces',
+      'get_conventions',
+      'get_api_doc',
+      'api_get',
+      'api_write',
+      'logout'
+    ])
     const annotations = Object.fromEntries(tools.map((tool) => [tool.name, tool.annotations]))
     expect(annotations.get_api_doc).toEqual({ readOnlyHint: true })
     expect(annotations.api_get).toEqual({ readOnlyHint: true })
