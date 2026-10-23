@@ -258,6 +258,23 @@ describe('get_api_doc (AC29)', () => {
     })
   })
 
+  it('without service passes the doc descriptions of the backend through', async () => {
+    const h = await setup()
+    const described = [
+      {
+        service: 's-events',
+        docs: [
+          { name: 'events', path: '/api-doc/api-doc.yaml', description: 'First doc.' },
+          { name: 'financials', path: '/x', description: 'Second doc.' }
+        ]
+      },
+      { service: 's-events-resources', docs: [{ name: 'events-resources', path: '/api-doc/api-doc.yaml' }] }
+    ]
+    h.world.backendRaw.set(CATALOG, () => json(200, described))
+    const result = await h.call('get_api_doc')
+    expect(result.body.services).toEqual(described)
+  })
+
   it('a service with one doc returns its YAML', async () => {
     const h = await withCatalog()
     h.world.backendRaw.set(`${CATALOG}/s-events-resources/events-resources`, () => yaml('openapi: 3.0.0\n'))
