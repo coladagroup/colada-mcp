@@ -490,3 +490,40 @@ describe('second opinion: log fields are picked, not spread', () => {
     expect(line).not.toContain('IFMATCHVALUE')
   })
 })
+
+describe('write budget and concurrency cap', () => {
+  it('refuses the write after 60 writes in one minute without sending it, and allows it again a minute later', async () => {
+    let time = 0
+    let sent = 0
+    const client = new ApiClient(
+      async () => {
+        sent++
+        return new Response(null, { status: 204 })
+      },
+      30_000,
+      () => time
+    )
+    for (let i = 0; i < 60; i++) await client.request('PATCH', STAGE_HOST, PATH, 't')
+    expect(await errorOf(client.request('PATCH', STAGE_HOST, PATH, 't'))).toContain('at most 60 writes per minute')
+    expect(sent).toBe(60)
+    await client.request('GET', STAGE_HOST, PATH, 't').catch(() => undefined)
+    expect(sent).toBe(61)
+    time = 60_001
+    await client.request('PATCH', STAGE_HOST, PATH, 't')
+    expect(sent).toBe(62)
+  })
+
+  it('keeps at most 4 requests in flight', async () => {
+    let inFlight = 0
+    let peak = 0
+    const client = new ApiClient(async () => {
+      inFlight++
+      peak = Math.max(peak, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      inFlight--
+      return json(200, { ok: true })
+    })
+    await Promise.all(Array.from({ length: 10 }, () => client.request('GET', STAGE_HOST, PATH, 't')))
+    expect(peak).toBe(4)
+  })
+})
