@@ -456,7 +456,7 @@ describe('realms', () => {
     await h.call('list_workspaces', { realm: 'client' })
     await h.call('api_get', { realm: 'client', ...eventPath(EVENT_A) })
     expect(h.world.configRequests.sort()).toEqual([PROD, CLIENT].sort())
-    const definitions = (await h.client.listTools()).tools
+    const definitions = (await h.client.listTools()).tools.filter((tool) => tool.name !== 'get_conventions')
     for (const tool of definitions) expect(Object.keys(tool.inputSchema.properties ?? {}), tool.name).toContain('realm')
   })
 

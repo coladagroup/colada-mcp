@@ -5,6 +5,7 @@ import { CONVENTIONS, CONVENTIONS_URI, INSTRUCTIONS } from './conventions.js'
 import { registerApiGet } from './tools/apiGet.js'
 import { registerApiWrite } from './tools/apiWrite.js'
 import { registerGetApiDoc } from './tools/getApiDoc.js'
+import { registerGetConventions } from './tools/getConventions.js'
 import { registerListWorkspaces } from './tools/listWorkspaces.js'
 import { registerLogout } from './tools/logout.js'
 
@@ -19,6 +20,7 @@ export function createServer(app: App): McpServer {
     async (uri) => ({ contents: [{ uri: uri.href, mimeType: 'text/markdown', text: CONVENTIONS }] })
   )
   registerListWorkspaces(server, app)
+  registerGetConventions(server)
   registerGetApiDoc(server, app)
   registerApiGet(server, app)
   registerApiWrite(server, app)
