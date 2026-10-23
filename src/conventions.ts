@@ -44,7 +44,7 @@ The api-doc of each service (get_api_doc) is the source for routes and bodies. T
 - Revision: one record and most writes return "X-ETag: <revision>", a plain number. Send it as "If-Match: <revision>". Some writes (for example department updates) return no revision.
 - Without If-Match most update routes answer 400. With an old revision they answer 409.
 - 409 can also be a business rule (a limit reached, a duplicate). Read the record again and retry once; on a second 409 stop and tell the user.
-- Error bodies are not shown to you; you only get the status. On 400 check the required fields in the api-doc and whether If-Match was sent.
+- A failed call shows the status and up to 500 characters of the service's answer. Many answers are empty; then check the required fields in the api-doc and whether If-Match was sent.
 - Create (POST) usually answers 201 with the record. Updates answer 204, or 200/201 with the record. Check the api-doc of the route.
 - "$unset" as a value removes a field. Required fields cannot be removed.
 - Custom fields are named x_*. On events they go in the body map ext ({"ext": {"x_code": "A1"}}). On guests they are normal keys of attributes.

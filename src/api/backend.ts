@@ -59,13 +59,19 @@ export async function callBackend(
   if (response.status >= 200 && response.status < 300) {
     return { ...response, returnedHeaders: returnedHeaders(response.headers) }
   }
-  if (response.status === 403) throw new ToolError(request.forbidden ?? messages.forbidden(method, request.path))
-  if (response.status === 404 && request.notFound) throw new ToolError(request.notFound)
-  if (response.status === 409 || response.status === 412) {
-    throw new ToolError(messages.conflict(method, request.path, response.status))
-  }
-  if (response.status === 428) throw new ToolError(messages.ifMatchRequired(method, request.path))
-  throw new ToolError(messages.failed(method, request.path, response.status))
+  throw new ToolError(withServiceText(failure(method, request, response.status), response.errorText))
+}
+
+function failure(method: string, request: BackendRequest, status: number): string {
+  if (status === 403) return request.forbidden ?? messages.forbidden(method, request.path)
+  if (status === 404 && request.notFound) return request.notFound
+  if (status === 409 || status === 412) return messages.conflict(method, request.path, status)
+  if (status === 428) return messages.ifMatchRequired(method, request.path)
+  return messages.failed(method, request.path, status)
+}
+
+function withServiceText(message: string, errorText: string | undefined): string {
+  return errorText ? `${message} The service said: ${errorText}` : message
 }
 
 function returnedHeaders(headers: Headers): Record<string, string> {

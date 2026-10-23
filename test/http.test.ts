@@ -490,3 +490,36 @@ describe('second opinion: log fields are picked, not spread', () => {
     expect(line).not.toContain('IFMATCHVALUE')
   })
 })
+
+describe('service error text', () => {
+  it('adds the text of a failed response to the message', async () => {
+    const { world, session } = await setup()
+    world.backendRaw.set(PATH, () => new Response('GuestChanges.firstName is too long', { status: 400 }))
+    const request = { workspaceId: WS_A, method: 'PUT', path: PATH }
+    expect(await errorOf(callBackend(new ApiClient(world.fetch), session, request, { httpStatus: null }))).toBe(
+      `PUT ${PATH} failed (400). The service said: GuestChanges.firstName is too long`
+    )
+  })
+
+  it('cuts the text at 500 characters', async () => {
+    const { world, session } = await setup()
+    world.backendRaw.set(PATH, () => new Response('x'.repeat(5000), { status: 409 }))
+    const request = { workspaceId: WS_A, method: 'PUT', path: PATH }
+    const message = await errorOf(callBackend(new ApiClient(world.fetch), session, request, { httpStatus: null }))
+    expect(message?.endsWith(` The service said: ${'x'.repeat(500)}`)).toBe(true)
+  })
+
+  it('does not write the text to the call log', async () => {
+    const { h, world } = await setup()
+    world.backendRaw.set('/_gw/s-events/api/events/e1', () => new Response('REASONMARK', { status: 400 }))
+    const result = await h.call('api_write', {
+      workspace: WS_A,
+      method: 'PUT',
+      service: 's-events',
+      path: '/api/events/e1',
+      body: {}
+    })
+    expect(String(result.body.error)).toContain('REASONMARK')
+    expect(JSON.stringify(h.logs)).not.toContain('REASONMARK')
+  })
+})
