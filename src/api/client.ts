@@ -33,15 +33,14 @@ export class ApiClient {
     method: string,
     host: string,
     pathAndQuery: string,
-    token: string | (() => Promise<string>),
+    token: string,
     headers: Record<string, string> = {},
     options: RequestOptions = {}
   ): Promise<ApiResponse> {
     await this.acquireSlot()
     try {
       if (method !== 'GET') this.takeWriteBudget(method, pathAndQuery.split('?')[0] ?? pathAndQuery)
-      const bearer = typeof token === 'string' ? token : await token()
-      return await this.send(method, host, pathAndQuery, bearer, headers, options)
+      return await this.send(method, host, pathAndQuery, token, headers, options)
     } finally {
       this.releaseSlot()
     }

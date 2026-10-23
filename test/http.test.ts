@@ -548,23 +548,4 @@ describe('limits apply when a request leaves the queue', () => {
     await Promise.all([...reads, ...queued])
     expect(await errorOf(client.request('PATCH', STAGE_HOST, PATH, 't'))).toContain('at most 60 writes per minute')
   })
-
-  it('asks for the token only after a slot is free', async () => {
-    const release: Array<() => void> = []
-    const client = new ApiClient(() => new Promise<Response>((resolve) => release.push(() => resolve(json(200, {})))))
-    const busy = Array.from({ length: 4 }, () => client.request('GET', STAGE_HOST, PATH, 't'))
-    let asked = false
-    const waiting = client.request('GET', STAGE_HOST, PATH, async () => {
-      asked = true
-      return 't'
-    })
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(asked).toBe(false)
-    for (const r of release.splice(0)) r()
-    await Promise.all(busy)
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(asked).toBe(true)
-    for (const r of release) r()
-    await waiting
-  })
 })
