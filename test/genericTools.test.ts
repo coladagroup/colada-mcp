@@ -173,7 +173,7 @@ describe('refusals send nothing (AC21–AC23, AC25–AC27, AC30)', () => {
     [
       'personal data',
       { method: 'PATCH', service: 's-events-guests', path: '/api/events/e1/guests/g1' },
-      'holds personal data'
+      'may return personal data'
     ],
     [
       'X-Colada header',

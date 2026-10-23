@@ -10,11 +10,11 @@ export function registerApiWrite(server: McpServer, app: App) {
     'api_write',
     {
       description:
-        'Changes data in a Colada backoffice service: POST, PUT or PATCH with a JSON body, in one workspace, with your own roles. The user approves each call. Read the object with api_get first and pass its X-ETag value as If-Match. Delete routes are blocked; deleting data stays a manual backoffice action. Returns the status, the JSON body and the headers Content-Range, ETag, X-ETag and Location.',
+        'Changes data in a Colada backoffice service: POST, PUT or PATCH with a JSON body (DELETE only for the few allowlisted routes, such as unpublishing a registration form), in one workspace, with your own roles. The user approves each call. Read the object with api_get first and pass its X-ETag value as If-Match. Routes that delete data are blocked; deleting data stays a manual backoffice action. Returns the status, the JSON body and the headers Content-Range, ETag, X-ETag and Location.',
       inputSchema: {
         ...realmShape(app),
         workspace: workspaceInput,
-        method: z.string().describe('POST, PUT or PATCH.'),
+        method: z.string().describe('POST, PUT or PATCH; DELETE only on allowlisted routes.'),
         service: z.string(),
         path: z.string(),
         query: z.record(z.string(), z.string()).optional(),
