@@ -527,3 +527,44 @@ describe('write budget and concurrency cap', () => {
     expect(peak).toBe(4)
   })
 })
+
+describe('limits apply when a request leaves the queue', () => {
+  it('charges the write budget after the wait, so queued writes cannot exceed 60 per minute', async () => {
+    let time = 0
+    const release: Array<() => void> = []
+    const client = new ApiClient(
+      (_input, init) =>
+        init?.method === 'GET'
+          ? new Promise<Response>((resolve) => release.push(() => resolve(json(200, {}))))
+          : Promise.resolve(new Response(null, { status: 204 })),
+      30_000,
+      () => time
+    )
+    const reads = Array.from({ length: 4 }, () => client.request('GET', STAGE_HOST, PATH, 't'))
+    const queued = Array.from({ length: 60 }, () => client.request('PATCH', STAGE_HOST, PATH, 't'))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    time = 75_000
+    for (const r of release) r()
+    await Promise.all([...reads, ...queued])
+    expect(await errorOf(client.request('PATCH', STAGE_HOST, PATH, 't'))).toContain('at most 60 writes per minute')
+  })
+
+  it('asks for the token only after a slot is free', async () => {
+    const release: Array<() => void> = []
+    const client = new ApiClient(() => new Promise<Response>((resolve) => release.push(() => resolve(json(200, {})))))
+    const busy = Array.from({ length: 4 }, () => client.request('GET', STAGE_HOST, PATH, 't'))
+    let asked = false
+    const waiting = client.request('GET', STAGE_HOST, PATH, async () => {
+      asked = true
+      return 't'
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(asked).toBe(false)
+    for (const r of release.splice(0)) r()
+    await Promise.all(busy)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(asked).toBe(true)
+    for (const r of release) r()
+    await waiting
+  })
+})

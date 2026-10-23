@@ -40,7 +40,7 @@ export async function callBackend(
       ? session.baseToken(minValidity)
       : session.workspaceToken(request.workspaceId, minValidity)
   const send = async () => {
-    return api.request(method, session.host, target, await token(), request.headers, {
+    return api.request(method, session.host, target, token, request.headers, {
       body: request.body,
       maxBytes: request.maxBytes,
       onStatus: (status) => {
