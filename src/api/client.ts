@@ -16,10 +16,18 @@ export interface RequestOptions {
 
 type BodyResult = { body: unknown } | { reason: string; error: ToolError }
 
+export const MAX_WRITES_PER_MINUTE = 60
+export const MAX_CONCURRENT_REQUESTS = 4
+
 export class ApiClient {
+  private readonly writeTimes: number[] = []
+  private active = 0
+  private readonly waiting: Array<() => void> = []
+
   constructor(
     private readonly fetchFn: typeof fetch,
-    private readonly timeoutMs = 30_000
+    private readonly timeoutMs = 30_000,
+    private readonly now: () => number = Date.now
   ) {}
 
   async request(
@@ -29,6 +37,46 @@ export class ApiClient {
     token: string,
     headers: Record<string, string> = {},
     options: RequestOptions = {}
+  ): Promise<ApiResponse> {
+    await this.acquireSlot()
+    try {
+      if (method !== 'GET') this.takeWriteBudget(method, pathAndQuery.split('?')[0] ?? pathAndQuery)
+      return await this.send(method, host, pathAndQuery, token, headers, options)
+    } finally {
+      this.releaseSlot()
+    }
+  }
+
+  private takeWriteBudget(method: string, path: string) {
+    const minuteAgo = this.now() - 60_000
+    while (this.writeTimes.length && (this.writeTimes[0] ?? 0) <= minuteAgo) this.writeTimes.shift()
+    if (this.writeTimes.length >= MAX_WRITES_PER_MINUTE) {
+      throw new ToolError(messages.writeBudget(method, path, MAX_WRITES_PER_MINUTE))
+    }
+    this.writeTimes.push(this.now())
+  }
+
+  private async acquireSlot() {
+    if (this.active < MAX_CONCURRENT_REQUESTS) {
+      this.active++
+      return
+    }
+    await new Promise<void>((resolve) => this.waiting.push(resolve))
+  }
+
+  private releaseSlot() {
+    const next = this.waiting.shift()
+    if (next) next()
+    else this.active--
+  }
+
+  private async send(
+    method: string,
+    host: string,
+    pathAndQuery: string,
+    token: string,
+    headers: Record<string, string>,
+    options: RequestOptions
   ): Promise<ApiResponse> {
     const path = pathAndQuery.split('?')[0] ?? pathAndQuery
     const write = method !== 'GET'
