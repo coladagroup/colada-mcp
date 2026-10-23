@@ -66,7 +66,10 @@ Email templates (s-email-templates)
 Registration forms (s-events-forms)
 - Base: /api/events/{event_id}/formtemplates/registration. PUT .../structure, PUT .../settings and PUT .../published need If-Match.
 - structure holds pages; the elements of a page are a map per language. A new field must go into the list of every language of the page. Send the whole structure back.
-- PUT .../published makes the form public to guests at once. Ask the user first.
+- PUT .../published makes the form public to guests at once; DELETE .../published unpublishes it (the only DELETE this MCP sends). Ask the user first for both.
+
+Guest schema of an event (s-events-guests, allowed without personal data)
+- GET /api/events/{e}/guestschema lists the fields an event uses. PUT .../guestschema/properties sets them, PUT .../guestschema/synced pulls the workspace definitions. They need If-Match greater than 0.
 
 Guests (s-events-guests, personal data)
 - PATCH /api/events/{e}/guests/{g} replaces all attributes: missing ones are removed.
