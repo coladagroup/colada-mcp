@@ -29,9 +29,7 @@ const deleteRoute = (method: string, service: string, path: string) =>
   `${method} /_gw/${service}${path} is blocked: this route deletes data (MCP delete denylist). Delete data in the backoffice.`
 const secretRoute = (method: string, service: string, path: string) =>
   `${method} /_gw/${service}${path} is blocked: this route reads or changes secrets (SMTP, Stripe, tokens, passwords, OTP). It is always blocked.`
-const personalDataService = (service: string) =>
-  `${service} holds personal data and is off. To turn it on, set COLADA_ALLOW_PERSONAL_DATA=true in the MCP config and restart the client.`
-const personalDataRoute = (method: string, service: string, path: string) =>
+const personalData = (method: string, service: string, path: string) =>
   `${method} /_gw/${service}${path} may return personal data and is off. To turn it on, set COLADA_ALLOW_PERSONAL_DATA=true in the MCP config and restart the client.`
 const pathRefused = (path: string, reason: string) =>
   `Path "${path}" is not allowed: ${reason}. Put query parameters in "query".`
@@ -123,11 +121,16 @@ const ALLOW_CASES: Case[] = [
   ['A52', 's-consumer-portal-admin', 'PUT', '/api/consumerportal/pages/p1/published'],
   ['A53', 's-events-resources-inventory', 'GET', '/api/events/e1/resources/rn_room/slotschema'],
   ['A54', 's-events-resources-inventory', 'POST', '/api/events/e1/resources/rn_room/slots/indexing/jobs'],
-  ['A55', 's-events-resources-inventory', 'GET', '/api/events/e1/resources/rn_room/slots/indexing/jobs/j1/status']
+  ['A55', 's-events-resources-inventory', 'GET', '/api/events/e1/resources/rn_room/slots/indexing/jobs/j1/status'],
+  ['A56', 's-events-guests', 'GET', '/api/events/e1/guestschema'],
+  ['A57', 's-events-guests', 'PUT', '/api/events/e1/guestschema/properties'],
+  ['A58', 's-events-guests', 'PUT', '/api/events/e1/guestschema/synced'],
+  ['A59', 's-events-guests', 'PUT', '/api/events/e1/guestschema/properties/contact_x/synced']
 ]
 
 const BORDERLINE_NEIGHBOURS: Array<[service: string, method: string, path: string]> = [
   ['s-documents', 'GET', '/api/events/e1/guestsdocuments'],
+  ['s-events-guests', 'GET', '/api/events/e1/guests'],
   ['s-file-storage', 'PUT', '/api/files/copy/bulk'],
   ['s-directory-accounts', 'GET', '/api/accounts'],
   ['s-workspaces', 'GET', '/api/workspaces/w1/info'],
@@ -170,6 +173,17 @@ const FULL_BLOCK_SERVICES = [
   's-guests-checker'
 ]
 
+const SERVICES_WITH_ALLOWED_ROUTES = [
+  's-consumer-portal-admin',
+  's-directory-accounts',
+  's-documents',
+  's-events-resources-inventory',
+  's-file-storage',
+  's-licenses',
+  's-orgstructure',
+  's-workspaces'
+]
+
 describe('test cases cover the CONTRACT §4 tables', () => {
   it('one case per table row, same ids, services and methods', () => {
     const rows = (rules: typeof DELETE_DENYLIST) => rules.map((rule) => [rule.id, rule.service, rule.method])
@@ -178,8 +192,10 @@ describe('test cases cover the CONTRACT §4 tables', () => {
     expect(ALLOW_CASES.map(([id, service, method]) => [id, service, method])).toEqual(
       rows(PERSONAL_DATA_ROUTE_ALLOWLIST)
     )
-    expect(FULL_BLOCK_SERVICES).toEqual(PERSONAL_DATA_SERVICES)
-    expect(DELETE_ALLOWLIST).toEqual([])
+    expect([...FULL_BLOCK_SERVICES, ...SERVICES_WITH_ALLOWED_ROUTES]).toEqual(PERSONAL_DATA_SERVICES)
+    expect(DELETE_ALLOWLIST.map((rule) => [rule.id, rule.service, rule.method])).toEqual([
+      ['X01', 's-events-forms', 'DELETE']
+    ])
   })
 
   it('every borderline service has a denied neighbour', () => {
@@ -188,7 +204,7 @@ describe('test cases cover the CONTRACT §4 tables', () => {
   })
 
   it('every pattern is anchored and lower case', () => {
-    const all = [...DELETE_DENYLIST, ...SECRET_ROUTES, ...PERSONAL_DATA_ROUTE_ALLOWLIST]
+    const all = [...DELETE_DENYLIST, ...DELETE_ALLOWLIST, ...SECRET_ROUTES, ...PERSONAL_DATA_ROUTE_ALLOWLIST]
     for (const rule of all) {
       expect(rule.pattern.source.startsWith('^') && rule.pattern.source.endsWith('$')).toBe(true)
       expect(rule.pattern.source).toBe(rule.pattern.source.toLowerCase())
@@ -238,26 +254,29 @@ describe('check 7: personal data (AC25)', () => {
   })
 
   it.each(BORDERLINE_NEIGHBOURS)('neighbour %s %s %s is blocked with the switch off', (service, method, path) => {
-    expect(refusal(method, service, path)).toBe(personalDataRoute(method, service, path))
+    expect(refusal(method, service, path)).toBe(personalData(method, service, path))
     expect(refusal(method, service, path, true)).toBeNull()
   })
 
   it('a trailing "/" on an allow-listed route falls back to blocked', () => {
     expect(refusal('GET', 's-workspaces', '/api/workspaces/w1/')).toBe(
-      personalDataRoute('GET', 's-workspaces', '/api/workspaces/w1/')
+      personalData('GET', 's-workspaces', '/api/workspaces/w1/')
     )
   })
 
   it('an allow-listed path with another method is blocked', () => {
     expect(refusal('POST', 's-workspaces', '/api/constants')).toBe(
-      personalDataRoute('POST', 's-workspaces', '/api/constants')
+      personalData('POST', 's-workspaces', '/api/constants')
     )
   })
 
-  it.each(FULL_BLOCK_SERVICES)('%s is blocked as a whole with the switch off, open with it on', (service) => {
-    expect(refusal('GET', service, '/api/anything')).toBe(personalDataService(service))
-    expect(refusal('GET', service, '/api/anything', true)).toBeNull()
-  })
+  it.each(FULL_BLOCK_SERVICES)(
+    '%s is blocked off the route allowlist with the switch off, open with it on',
+    (service) => {
+      expect(refusal('GET', service, '/api/anything')).toBe(personalData('GET', service, '/api/anything'))
+      expect(refusal('GET', service, '/api/anything', true)).toBeNull()
+    }
+  )
 
   it('other services are open', () => {
     expect(refusal('GET', 's-events', '/api/events/e1')).toBeNull()
@@ -323,10 +342,18 @@ describe('checks 3 and 4: method and DELETE allowlist (AC21, AC23)', () => {
     expect(checkWrite(method, { service: 's-events', path: '/api/events' }, false).method).toBe(method.toUpperCase())
   })
 
-  it.each(['DELETE', 'delete'])('every %s is blocked while the allowlist is empty', (method) => {
+  it.each(['DELETE', 'delete'])('%s off the allowlist is blocked', (method) => {
     expect(() => checkWrite(method, { service: 's-events', path: '/api/events/e1' }, true)).toThrow(
       'DELETE /_gw/s-events/api/events/e1 is blocked: only DELETE routes on the MCP allowlist are sent, and this route is not on it. Delete data in the backoffice.'
     )
+  })
+
+  it('DELETE that unpublishes a registration form is allowed (X01)', () => {
+    const path = '/api/events/e1/formtemplates/registration/published'
+    expect(checkWrite('DELETE', { service: 's-events-forms', path }, false).method).toBe('DELETE')
+    expect(() =>
+      checkWrite('DELETE', { service: 's-events-forms', path: '/api/events/e1/formtemplates/registration' }, false)
+    ).toThrow('only DELETE routes on the MCP allowlist')
   })
 
   it('api_get always checks GET', () => {
@@ -383,7 +410,7 @@ describe('check order (CONTRACT §3)', () => {
 
   it('a bad header on a blocked route shows the route text', () => {
     expect(refusal('GET', 's-events-guests', '/api/x', false, { Cookie: 'a' })).toBe(
-      personalDataService('s-events-guests')
+      personalData('GET', 's-events-guests', '/api/x')
     )
   })
 })

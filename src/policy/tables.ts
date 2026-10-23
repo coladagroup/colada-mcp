@@ -39,7 +39,14 @@ export const DELETE_DENYLIST: readonly RouteRule[] = [
   }
 ]
 
-export const DELETE_ALLOWLIST: readonly RouteRule[] = []
+export const DELETE_ALLOWLIST: readonly RouteRule[] = [
+  {
+    id: 'X01',
+    service: 's-events-forms',
+    method: 'DELETE',
+    pattern: /^\/api\/events\/[^/]+\/formtemplates\/registration\/published$/
+  }
+]
 
 export const SECRET_ROUTES: readonly RouteRule[] = [
   { id: 'S01', service: 's-workspaces', method: 'GET', pattern: /^\/api\/workspaces\/[^/]+\/smtp\/?$/ },
@@ -91,7 +98,15 @@ export const PERSONAL_DATA_SERVICES: readonly string[] = [
   's-events-mcontent-requests',
   's-events-brokers',
   's-events-registration',
-  's-guests-checker'
+  's-guests-checker',
+  's-consumer-portal-admin',
+  's-directory-accounts',
+  's-documents',
+  's-events-resources-inventory',
+  's-file-storage',
+  's-licenses',
+  's-orgstructure',
+  's-workspaces'
 ]
 
 export const PERSONAL_DATA_ROUTE_ALLOWLIST: readonly RouteRule[] = [
@@ -257,5 +272,14 @@ export const PERSONAL_DATA_ROUTE_ALLOWLIST: readonly RouteRule[] = [
     service: 's-events-resources-inventory',
     method: 'GET',
     pattern: /^\/api\/events\/[^/]+\/resources\/rn_[^/]+\/slots\/indexing\/jobs\/[^/]+\/status$/
+  },
+  { id: 'A56', service: 's-events-guests', method: 'GET', pattern: /^\/api\/events\/[^/]+\/guestschema$/ },
+  { id: 'A57', service: 's-events-guests', method: 'PUT', pattern: /^\/api\/events\/[^/]+\/guestschema\/properties$/ },
+  { id: 'A58', service: 's-events-guests', method: 'PUT', pattern: /^\/api\/events\/[^/]+\/guestschema\/synced$/ },
+  {
+    id: 'A59',
+    service: 's-events-guests',
+    method: 'PUT',
+    pattern: /^\/api\/events\/[^/]+\/guestschema\/properties\/[^/]+\/synced$/
   }
 ]

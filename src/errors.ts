@@ -61,9 +61,7 @@ export const messages = {
     `${method} ${path} is blocked: this route deletes data (MCP delete denylist). Delete data in the backoffice.`,
   secretRoute: (method: string, path: string) =>
     `${method} ${path} is blocked: this route reads or changes secrets (SMTP, Stripe, tokens, passwords, OTP). It is always blocked.`,
-  personalDataService: (service: string) =>
-    `${service} holds personal data and is off. To turn it on, set COLADA_ALLOW_PERSONAL_DATA=true in the MCP config and restart the client.`,
-  personalDataRoute: (method: string, path: string) =>
+  personalData: (method: string, path: string) =>
     `${method} ${path} may return personal data and is off. To turn it on, set COLADA_ALLOW_PERSONAL_DATA=true in the MCP config and restart the client.`,
   headerNotAllowed: (name: string) =>
     `Header "${name}" is not allowed. Only Range and If-Match can be passed; the MCP sets Authorization, Accept, Accept-Language and the workspace itself.`,
