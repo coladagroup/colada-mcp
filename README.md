@@ -8,7 +8,7 @@ Tools:
 |---|---|
 | `list_workspaces` | Lists the workspaces you can open. |
 | `get_conventions` | Returns the Colada API conventions the model should read before a write: paging, filters, revisions and update rules. No backend call. |
-| `get_api_doc` | Lists the backoffice services with API docs, or returns the OpenAPI YAML of one service. |
+| `get_api_doc` | Lists the backoffice services with API docs and a one-line description of each doc, or returns the OpenAPI YAML of one service. The descriptions come from the backend at run time (`s-ecosystem`); the package holds none. |
 | `api_get` | Sends one GET to a backoffice service (`s-*`) in one workspace. Returns the status, the JSON body and the headers `Content-Range`, `ETag`, `X-ETag`, `Location`. |
 | `api_write` | Sends one POST, PUT or PATCH with a JSON body. **It changes data.** |
 | `logout` | Ends the stored session. |

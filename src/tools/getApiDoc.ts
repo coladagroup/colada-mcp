@@ -12,7 +12,7 @@ const DOC_NAME = /^(?!\.{1,2}$)[A-Za-z0-9._-]+$/
 
 interface ServiceDocs {
   service: string
-  docs: Array<{ name: string; path: string }>
+  docs: Array<{ name: string; path: string; description?: string }>
 }
 
 export function registerGetApiDoc(server: McpServer, app: App) {
@@ -20,7 +20,7 @@ export function registerGetApiDoc(server: McpServer, app: App) {
     'get_api_doc',
     {
       description:
-        'Reads the OpenAPI description of the Colada backoffice API. Without `service` it lists the services and their doc names. With `service` (and `doc` when the service has several) it returns the OpenAPI YAML. Read the doc before you call api_get or api_write on a service.',
+        'Reads the OpenAPI description of the Colada backoffice API. Without `service` it lists the services with their doc names and a one-line description of each doc; use it to find the service that owns the data. With `service` (and `doc` when the service has several) it returns the OpenAPI YAML. Read the doc before you call api_get or api_write on a service.',
       inputSchema: {
         ...realmShape(app),
         service: z
