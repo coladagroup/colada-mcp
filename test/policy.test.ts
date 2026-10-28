@@ -63,7 +63,9 @@ const SECRET_CASES: Case[] = [
   ['S12', 's-directory-contacts', 'PUT', '/api/contacts/c1/password/reset'],
   ['S13', 's-workspaces', 'GET', '/api/workspaces/w1/smtp-with-creds'],
   ['S14', 's-workspaces', 'PUT', '/api/admin/workspaces/w1/stripe'],
-  ['S15', 's-licenses', 'PUT', '/api/stripe/checkout/s1/expired']
+  ['S15', 's-licenses', 'PUT', '/api/stripe/checkout/s1/expired'],
+  ['S17', 's-events', 'GET', '/api/events/e1/financialsettings/onlinepayments'],
+  ['S18', 's-events', 'PUT', '/api/events/e1/financialsettings']
 ]
 
 const ALLOW_CASES: Case[] = [
