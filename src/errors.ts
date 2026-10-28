@@ -85,5 +85,16 @@ export const messages = {
   firebaseTooLarge: (store: string, path: string, indexes: string) =>
     `${store} ${path} is larger than 10 MB. Narrow it with orderBy on an indexed child (${indexes}), limitToFirst / limitToLast, or shallow.`,
   firebaseFailed: (store: string, path: string, status: number | null) =>
-    `${store} ${path} failed (${status ?? 'no response'}).`
+    `${store} ${path} failed (${status ?? 'no response'}).`,
+  firebasePath: (path: string, reason: string) =>
+    `Path "${path}" is not allowed: ${reason}. Paths are relative to the workspace, for example "timesheet" or "projects/<id>".`,
+  firebaseNotFound: (store: string, path: string) => `Nothing found at ${store} ${path}.`,
+  firebasePersonalNode: (node: string) =>
+    `${node} holds personal data. It is off; COLADA_ALLOW_PERSONAL_DATA=true turns it on.`,
+  firebaseMissingPermission: (permissions: readonly string[], workspace: string, node: string) =>
+    `You lack ${permissions.length === 1 ? permissions[0] : `one of ${permissions.join(', ')}`} in workspace ${workspace}, so ${node} cannot be read.`,
+  firebaseHiddenField: (field: string, option: string) =>
+    `"${field}" is personal data and is hidden, so it cannot be used in ${option}. COLADA_ALLOW_PERSONAL_DATA=true shows it.`,
+  firebaseSecretField: (field: string, option: string) =>
+    `"${field}" is a secret and is never returned, so it cannot be used in ${option}.`
 }
