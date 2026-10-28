@@ -19,6 +19,8 @@ export interface BackendRequest {
   maxBytes?: number
   notFound?: string
   forbidden?: string
+  serverError?: string
+  write?: boolean
 }
 
 export interface BackendResponse extends ApiResponse {
@@ -32,7 +34,7 @@ export async function callBackend(
   state: CallState
 ): Promise<BackendResponse> {
   const method = request.method ?? 'GET'
-  const write = method !== 'GET'
+  const write = request.write ?? method !== 'GET'
   const target = request.query ? `${request.path}?${request.query}` : request.path
   const minValidity = write ? WRITE_MIN_VALIDITY_SECONDS : undefined
   const token = () =>
@@ -43,6 +45,7 @@ export async function callBackend(
     return api.request(method, session.host, target, await token(), request.headers, {
       body: request.body,
       maxBytes: request.maxBytes,
+      write,
       onStatus: (status) => {
         state.httpStatus = status
       }
@@ -67,6 +70,7 @@ function failure(method: string, request: BackendRequest, status: number): strin
   if (status === 404 && request.notFound) return request.notFound
   if (status === 409 || status === 412) return messages.conflict(method, request.path, status)
   if (status === 428) return messages.ifMatchRequired(method, request.path)
+  if (status >= 500 && request.serverError) return request.serverError
   return messages.failed(method, request.path, status)
 }
 

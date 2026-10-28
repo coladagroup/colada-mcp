@@ -12,6 +12,7 @@ export interface RequestOptions {
   body?: unknown
   maxBytes?: number
   onStatus?: (status: number) => void
+  write?: boolean
 }
 
 type BodyResult = { body: unknown } | { reason: string; error: ToolError }
@@ -38,10 +39,16 @@ export class ApiClient {
     headers: Record<string, string> = {},
     options: RequestOptions = {}
   ): Promise<ApiResponse> {
+    return this.withSlot(async () => {
+      if (options.write ?? method !== 'GET') this.takeWriteBudget(method, pathAndQuery.split('?')[0] ?? pathAndQuery)
+      return this.send(method, host, pathAndQuery, token, headers, options)
+    })
+  }
+
+  async withSlot<T>(task: () => Promise<T>): Promise<T> {
     await this.acquireSlot()
     try {
-      if (method !== 'GET') this.takeWriteBudget(method, pathAndQuery.split('?')[0] ?? pathAndQuery)
-      return await this.send(method, host, pathAndQuery, token, headers, options)
+      return await task()
     } finally {
       this.releaseSlot()
     }
@@ -79,7 +86,7 @@ export class ApiClient {
     options: RequestOptions
   ): Promise<ApiResponse> {
     const path = pathAndQuery.split('?')[0] ?? pathAndQuery
-    const write = method !== 'GET'
+    const write = options.write ?? method !== 'GET'
     const hasBody = options.body !== undefined && options.body !== null
     let response: Response
     try {

@@ -70,5 +70,20 @@ export const messages = {
   keycloakRefused: (host: string, status: number) => `Keycloak at ${host} refused the token request (HTTP ${status}).`,
   logoutFailed: (realms: string[]) =>
     `Could not remove the stored session of realm ${realms.join(', ')} from the OS keyring. Call logout again.`,
-  noWorkspace: (realm: string) => `You have no workspace in realm ${realm}.`
+  noWorkspace: (realm: string) => `You have no workspace in realm ${realm}.`,
+  firebaseOtherWorkspace: () => 'The Firebase token is for another workspace. Nothing was read.',
+  firebaseBadConfig: (workspace: string, field: string, value: string) =>
+    `The Campaigns config of workspace ${workspace} has an invalid ${field} ("${value}"). Nothing was read.`,
+  firebaseNoAccess: (workspace: string) =>
+    `You have no Campaigns access in workspace ${workspace} (campaigns_app:view).`,
+  firebaseNotSetUp: (workspace: string) => `Campaigns is not set up for workspace ${workspace}.`,
+  firebaseSignInFailed: (status: number | null, code: string | null) =>
+    `Firebase sign-in failed (${status ?? 'no response'}${code ? `, ${code}` : ''}). Nothing was read.`,
+  firebasePermissionsUnreadable: (workspace: string) =>
+    `Cannot read your Campaigns permissions in workspace ${workspace}. Nothing was read.`,
+  firebaseRefused: (path: string) => `Firebase refused the read of ${path} (expired token or a rules violation).`,
+  firebaseTooLarge: (store: string, path: string, indexes: string) =>
+    `${store} ${path} is larger than 10 MB. Narrow it with orderBy on an indexed child (${indexes}), limitToFirst / limitToLast, or shallow.`,
+  firebaseFailed: (store: string, path: string, status: number | null) =>
+    `${store} ${path} failed (${status ?? 'no response'}).`
 }
