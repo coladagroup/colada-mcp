@@ -31,6 +31,18 @@ const BUCKETS = ['day', 'week', 'month', 'year'] as const
 type Bucket = (typeof BUCKETS)[number]
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})/
 
+const UNSAFE_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype'])
+
+export function assertSafeFieldPath(field: string, option: string) {
+  if (field.split('.').some((segment) => UNSAFE_SEGMENTS.has(segment))) {
+    throw new ToolError(
+      messages.firebaseQuery(
+        `"${field}" in ${option}: __proto__, constructor and prototype are not allowed in a field path`
+      )
+    )
+  }
+}
+
 export function hasLocalOps(ops: LocalOps): boolean {
   return Boolean(ops.where?.length || ops.fields?.length || ops.groupBy?.length || ops.sum?.length)
 }

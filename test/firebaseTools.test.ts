@@ -785,3 +785,58 @@ describe('second opinion (REVIEW-diff-phase4.md)', () => {
     expect((await rtdb(h, { path: 'tags' })).isError).toBe(false)
   })
 })
+
+describe('second opinion, gpt-6-astra (REVIEW-diff-phase4.md)', () => {
+  it('A: field paths with __proto__, constructor or prototype are refused and Object.prototype stays clean', async () => {
+    const { h, fw } = await setup()
+    fw.rtdb[WS_A] = { tags: { g1: JSON.parse('{"name":"x","__proto__":{"polluted":"yes"}}') } }
+    for (const args of [
+      { fields: ['__proto__.polluted'] },
+      { where: [{ field: 'constructor.name', op: 'exists' }] },
+      { groupBy: ['prototype'] },
+      { sum: ['__proto__'] }
+    ]) {
+      expect((await rtdb(h, { path: 'tags', ...args })).body.error, JSON.stringify(args)).toMatch(
+        /not allowed in a field path/
+      )
+    }
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+  })
+
+  it('B: comments are refused while the user has hidden projects (comments are keyed by entity, not by project)', async () => {
+    const { h } = await setup({ allowPersonalData: true })
+    expect((await rtdb(h, { path: 'comments' })).body.error).toBe(
+      'comments cannot be read: it is keyed by budget rows, activities and other entities, so the MCP cannot hide comments of projects you may not see.'
+    )
+    expect((await rtdb(h, { path: 'comments/row-1' })).isError).toBe(true)
+  })
+
+  it('B: comments are readable when no project is hidden from the user', async () => {
+    const { h, fw } = await setup({ allowPersonalData: true })
+    const ws = fw.rtdb[WS_A] as Record<string, Record<string, unknown>>
+    ws.projects = { p1: { name: 'Fair' } }
+    ws.comments = { 'row-1': { m1: { text: 'ok' } } }
+    expect((await rtdb(h, { path: 'comments' })).body.data).toEqual({ 'row-1': { m1: { text: 'ok' } } })
+  })
+
+  it('C: one call uses one access snapshot; no re-mint in the middle of a call', async () => {
+    const { h, fw, world } = await setup()
+    fw.permissions.push('campaigns_app/projects/budget:view')
+    await rtdb(h, { path: 'tags' })
+    world.now += 3530
+    fw.permissions = ['campaigns_app:view']
+    fw.rtdbRaw = (url) => {
+      if (url.pathname.endsWith('/projects.json')) world.now += 20
+      return undefined
+    }
+    const mints = () => world.requests.filter((r) => r.url.host === IDENTITY_HOST).length
+    const before = mints()
+    const result = await h.call('campaigns_budget', { workspace: WS_A, kind: 'projects', id: 'p1' })
+    expect(mints()).toBe(before)
+    expect(result.isError).toBe(false)
+    fw.rtdbRaw = null
+    expect((await h.call('campaigns_budget', { workspace: WS_A, kind: 'projects', id: 'p1' })).body.error).toBe(
+      `You lack campaigns_app/projects/budget:view in workspace ${WS_A}, so budgets cannot be read.`
+    )
+  })
+})

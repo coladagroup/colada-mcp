@@ -14,7 +14,7 @@ import {
 } from './campaigns/budgetMath.js'
 import { firestoreFieldPath, fromFirestoreFields } from './firestoreValues.js'
 import type { FirebaseResponse } from './http.js'
-import { applyLocalOps, fieldsUsed, hasLocalOps, type LocalOps } from './localOps.js'
+import { applyLocalOps, assertSafeFieldPath, fieldsUsed, hasLocalOps, type LocalOps } from './localOps.js'
 import {
   type CheckedPath,
   type FirebaseTarget as CheckedTarget,
@@ -26,7 +26,7 @@ import { assertUsable, redact } from './policy/redact.js'
 import { applyRowRules, campaignsRole, hiddenProjectIds } from './policy/rows.js'
 import type { NodeRule, ProjectKind, Store } from './policy/tables.js'
 import { indexesOf, type RtdbQuery, rtdbQueryString } from './rtdbQuery.js'
-import type { FirebaseAccess, FirebaseAppName, FirebaseSessions } from './session.js'
+import type { FirebaseAccess, FirebaseAppName } from './session.js'
 
 export interface FirebaseTarget {
   realm?: string
@@ -60,15 +60,22 @@ async function openReader(app: App, ctx: FirebaseToolContext, target: FirebaseTa
   const { directory, firebase } = await openRealm(app, ctx, target.realm)
   const workspace = await directory.resolve(target.workspace, ctx.state)
   ctx.workspace = workspace
-  const access = () => firebase.access(workspace.id, target.app, ctx.state)
-  return { workspace: workspace.id, access, send: sender(firebase, workspace.id, target.app, access, ctx) }
+  const snapshot: { current: FirebaseAccess | null } = { current: null }
+  const access = async () => {
+    snapshot.current ??= await firebase.access(workspace.id, target.app, ctx.state)
+    return snapshot.current
+  }
+  const renew = async () => {
+    firebase.drop(workspace.id, target.app)
+    return firebase.access(workspace.id, target.app, ctx.state)
+  }
+  return { workspace: workspace.id, access, send: sender(access, renew, snapshot, ctx) }
 }
 
 function sender(
-  firebase: FirebaseSessions,
-  workspace: string,
-  appName: FirebaseAppName,
   access: () => Promise<FirebaseAccess>,
+  renew: () => Promise<FirebaseAccess>,
+  snapshot: { current: FirebaseAccess | null },
   ctx: FirebaseToolContext
 ): Reader['send'] {
   return async (request, store, path) => {
@@ -76,9 +83,9 @@ function sender(
     let response = await request(used)
     ctx.state.httpStatus = response.status
     if (response.status === 401) {
-      firebase.drop(workspace, appName)
-      const fresh = await access()
+      const fresh = await renew()
       if (!sameAccess(used, fresh)) throw new ToolError(messages.firebaseAccessChanged())
+      snapshot.current = fresh
       response = await request(fresh)
       ctx.state.httpStatus = response.status
     }
@@ -132,6 +139,7 @@ function rtdbRequest(
 }
 
 function linkedKinds(rule: NodeRule): ProjectKind[] {
+  if (rule.entityKeyed) return ['projects', 'planner']
   if (!rule.link) return []
   if (rule.link.by === 'self') return [rule.link.kind]
   if (rule.link.by === 'key') return [...rule.link.kinds]
@@ -184,7 +192,10 @@ function finish(result: Record<string, unknown>, removed: Set<string>, removedRe
 }
 
 function assertOpsUsable(checked: CheckedTarget, ops: LocalOps, allowPersonalData: boolean) {
-  for (const { field, option } of fieldsUsed(ops)) assertUsable(field, option, checked.rule, allowPersonalData)
+  for (const { field, option } of fieldsUsed(ops)) {
+    assertSafeFieldPath(field, option)
+    assertUsable(field, option, checked.rule, allowPersonalData)
+  }
 }
 
 export async function readRtdb(app: App, ctx: FirebaseToolContext, input: RtdbInput) {
@@ -211,6 +222,7 @@ export async function readRtdb(app: App, ctx: FirebaseToolContext, input: RtdbIn
     throw new ToolError(messages.firebaseQuery(`orderBy, filters and limits work on ${rule.node}, not on one record`))
   }
   if (input.orderBy !== undefined && input.orderBy !== '$key' && input.orderBy !== '$value') {
+    assertSafeFieldPath(input.orderBy, 'orderBy')
     assertUsable(input.orderBy, 'orderBy', rule, allowPersonalData)
   }
   const ownerQuery = rtdbQueryString(query)
@@ -227,6 +239,7 @@ export async function readRtdb(app: App, ctx: FirebaseToolContext, input: RtdbIn
     queryString = ownerQuery
   }
   const hidden = await hiddenProjects(app, reader, rule)
+  if (rule.entityKeyed && hidden.size > 0) throw new ToolError(messages.firebaseEntityKeyed(rule.node))
   const response = await reader
     .send(rtdbRequest(app, reader, checked.segments, queryString, rule.node, input.path), 'rtdb', input.path)
     .catch((err: Error) => {
@@ -279,7 +292,10 @@ export async function readFirestore(app: App, ctx: FirebaseToolContext, input: F
   if (document && (input.pageSize !== undefined || input.pageToken !== undefined)) {
     throw new ToolError(messages.firebaseQuery('pageSize and pageToken work on a collection, not on one document'))
   }
-  for (const field of input.fields ?? []) assertUsable(field, 'fields', rule, allowPersonalData)
+  for (const field of input.fields ?? []) {
+    assertSafeFieldPath(field, 'fields')
+    assertUsable(field, 'fields', rule, allowPersonalData)
+  }
   const params = new URLSearchParams()
   if (!document) params.set('pageSize', String(input.pageSize ?? DEFAULT_PAGE_SIZE))
   if (!document && input.pageToken) params.set('pageToken', input.pageToken)

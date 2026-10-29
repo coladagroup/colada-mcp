@@ -14,6 +14,7 @@ export interface NodeRule {
   group: Group
   permissions: readonly string[]
   link?: ProjectLink
+  entityKeyed?: true
   ownRows?: true
   personal: readonly string[]
   neverReturned: readonly string[]
@@ -40,7 +41,7 @@ function rule(
   node: string,
   group: Group,
   permissions: readonly string[],
-  extra: Partial<Pick<NodeRule, 'link' | 'ownRows' | 'personal' | 'neverReturned'>> = {}
+  extra: Partial<Pick<NodeRule, 'link' | 'entityKeyed' | 'ownRows' | 'personal' | 'neverReturned'>> = {}
 ): NodeRule {
   return { id, store, node, group, permissions, personal: [], neverReturned: [], ...extra }
 }
@@ -103,7 +104,7 @@ export const CAMPAIGNS_RULES: readonly NodeRule[] = [
     ],
     { link: { by: 'field', fields: ['source'] } }
   ),
-  rule('R21', 'rtdb', 'comments', 'personal', [APP_VIEW], { link: { by: 'key', kinds: BOTH } }),
+  rule('R21', 'rtdb', 'comments', 'personal', [APP_VIEW], { entityKeyed: true }),
   rule('R22', 'rtdb', 'chat', 'personal', ['campaigns_app/chat:view']),
   rule('R23', 'rtdb', 'richChat', 'personal', [APP_VIEW]),
   rule('R24', 'rtdb', 'history', 'personal', [APP_VIEW], { link: { by: 'field', fields: ['source'] } }),

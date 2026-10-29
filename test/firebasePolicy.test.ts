@@ -490,7 +490,7 @@ describe('row rules (CONTRACT §4)', () => {
     ).toBe('Nothing found at rtdb projects/p2/name.')
   })
 
-  it.each(['R01', 'R02', 'R15', 'R16', 'R21'])('AC-F12: %s by path key', (id) => {
+  it.each(['R01', 'R02', 'R15', 'R16'])('AC-F12: %s by path key', (id) => {
     const hidden = new Set(['p2'])
     expect(applyRowRules(ruleOf(id), [], { p1: 1, p2: 2 }, ctx({ hidden }))).toEqual({
       value: { p1: 1 },
