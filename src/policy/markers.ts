@@ -16,13 +16,14 @@ interface Segment {
 }
 
 const PROJECTION_SUFFIX = /:\([^/]*\)\/?$/
+const TRAILING_SLASH = /(?<=.)\/$/
 const OPERATION_KEYS = ['get', 'put', 'post', 'patch', 'delete']
 const MARKER = 'x-personal-data'
 
 export class DocFormatError extends Error {}
 
 export function indexDoc(yamlText: string): MarkerIndex {
-  const doc: unknown = parse(yamlText)
+  const doc: unknown = parse(yamlText, { version: '1.2', schema: 'core', merge: true })
   if (!isMap(doc)) throw new DocFormatError('the doc is not a map')
   const paths = doc.paths
   if (paths === undefined || paths === null) return []
@@ -31,19 +32,27 @@ export function indexDoc(yamlText: string): MarkerIndex {
   const index: MarkedOperation[] = []
   for (const [key, item] of Object.entries(paths)) {
     if (!key.startsWith('/api/') || !isMap(item)) continue
-    const segments = segmentsOf(key.replace(PROJECTION_SUFFIX, ''))
+    const path = key.replace(PROJECTION_SUFFIX, '')
+    const segments = segmentsOf(path.replace(TRAILING_SLASH, ''))
     const pathMarker = markerOf(item) ?? docMarker
     for (const method of OPERATION_KEYS) {
       const operation = item[method]
-      if (!isMap(operation)) continue
-      index.push({ method: method.toUpperCase(), segments, marker: markerOf(operation) ?? pathMarker })
+      if (!isMap(operation) && item.$ref === undefined) continue
+      const marker = markerOf(operation) ?? pathMarker
+      const partial = item.$ref !== undefined || TRAILING_SLASH.test(path)
+      index.push({ method: method.toUpperCase(), segments, marker: partial ? onlyTrue(marker) : marker })
     }
   }
   return index
 }
 
 export function markerFor(index: MarkerIndex, method: string, path: string): Marker {
-  const parts = path.replace(PROJECTION_SUFFIX, '').split('/')
+  const stripped = path.replace(PROJECTION_SUFFIX, '')
+  const marker = bestMarker(index, method, stripped.replace(TRAILING_SLASH, '').split('/'))
+  return TRAILING_SLASH.test(stripped) ? onlyTrue(marker) : marker
+}
+
+function bestMarker(index: MarkerIndex, method: string, parts: readonly string[]): Marker {
   let best: MarkedOperation[] = []
   for (const operation of index) {
     if (operation.method !== method || !matches(operation.segments, parts)) continue
@@ -55,6 +64,10 @@ export function markerFor(index: MarkerIndex, method: string, path: string): Mar
   if (best.some((operation) => operation.marker === true)) return true
   if (best.some((operation) => operation.marker === undefined)) return undefined
   return false
+}
+
+function onlyTrue(marker: Marker): Marker {
+  return marker === true ? true : undefined
 }
 
 function matches(segments: readonly Segment[], parts: readonly string[]): boolean {

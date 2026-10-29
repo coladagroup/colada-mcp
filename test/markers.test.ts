@@ -263,3 +263,115 @@ describe('policy with markers (AC37, AC38, AC40, AC43)', () => {
     )
   })
 })
+
+const GUEST_INPUT = { service: 's-events-guests', path: '/api/events/e1/guests/g1' }
+
+const refused = (run: () => unknown): boolean => {
+  try {
+    run()
+    return false
+  } catch {
+    return true
+  }
+}
+
+describe('crafted docs (Stage 2 review)', () => {
+  it('an operation that gets its true marker through a merge key (<<) stays true', () => {
+    const doc = `
+x-pd: &pd
+  x-personal-data: true
+info:
+  x-personal-data: false
+paths:
+  /api/events/{event_id}/guests/{guest_id}:
+    get:
+      <<: *pd
+`
+    const index = indexDoc(doc)
+    expect(markerFor(index, 'GET', '/api/events/e1/guests/g1')).toBe(true)
+    expect(refused(() => checkRead(GUEST_INPUT, false, index))).toBe(true)
+  })
+
+  it('a path item whose operations come from a merge key (<<) is matched, not skipped for a less specific false key', () => {
+    const doc = `
+x-ops: &guestOps
+  get:
+    x-personal-data: true
+info:
+  x-personal-data: false
+paths:
+  /api/events/{event_id}/guests/{guest_id}:
+    <<: *guestOps
+  /api/events/{event_id}/{rest}/{id}:
+    get: {}
+`
+    const index = indexDoc(doc)
+    expect(markerFor(index, 'GET', '/api/events/e1/guests/g1')).toBe(true)
+    expect(refused(() => checkRead(GUEST_INPUT, false, index))).toBe(true)
+  })
+
+  it('a $ref path item is not skipped in favour of a less specific false key', () => {
+    const doc = `
+info:
+  x-personal-data: false
+paths:
+  /api/events/{event_id}/guests/{guest_id}:
+    $ref: '#/x-items/guest'
+  /api/events/{event_id}/{rest}/{id}:
+    get: {}
+x-items:
+  guest:
+    get:
+      x-personal-data: true
+`
+    const index = indexDoc(doc)
+    expect(markerFor(index, 'GET', '/api/events/e1/guests/g1')).not.toBe(false)
+    expect(refused(() => checkRead(GUEST_INPUT, false, index))).toBe(true)
+  })
+
+  it('M11: with a trailing slash on the request or the doc key only a true marker counts', () => {
+    const doc = `
+paths:
+  /api/events/{event_id}/guests/{guest_id}/:
+    get:
+      x-personal-data: false
+`
+    const index = indexDoc(doc)
+    expect(markerFor(index, 'GET', '/api/events/e1/guests/g1/')).toBeUndefined()
+    expect(refused(() => checkRead({ ...GUEST_INPUT, path: '/api/events/e1/guests/g1/' }, false, index))).toBe(true)
+  })
+
+  it('§1: only a YAML 1.2 boolean is a marker; "no" under a %YAML 1.1 directive is no marker', () => {
+    const doc = `%YAML 1.1
+---
+paths:
+  /api/events/{event_id}/guests/{guest_id}:
+    get:
+      x-personal-data: no
+`
+    expect(markerFor(indexDoc(doc), 'GET', '/api/events/e1/guests/g1')).toBeUndefined()
+  })
+})
+
+describe('only a true marker counts on a $ref path item or a trailing slash', () => {
+  it('a $ref path item keeps an inline true operation', () => {
+    const doc = `
+paths:
+  /api/events/{event_id}/guests/{guest_id}:
+    $ref: '#/x-items/guest'
+    get:
+      x-personal-data: true
+    patch:
+      x-personal-data: false
+`
+    const index = indexDoc(doc)
+    expect(markerFor(index, 'GET', '/api/events/e1/guests/g1')).toBe(true)
+    expect(markerFor(index, 'PATCH', '/api/events/e1/guests/g1')).toBeUndefined()
+  })
+
+  it('a doc key with a trailing slash keeps a true marker for both request forms', () => {
+    const index = indexDoc('paths:\n  /api/events/{id}/:\n    get:\n      x-personal-data: true\n')
+    expect(markerFor(index, 'GET', '/api/events/e1')).toBe(true)
+    expect(markerFor(index, 'GET', '/api/events/e1/')).toBe(true)
+  })
+})

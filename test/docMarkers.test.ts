@@ -53,7 +53,9 @@ afterEach(async () => {
 const yaml = (text: string) => () =>
   new Response(text, { status: 200, headers: { 'Content-Type': 'application/yaml; charset=utf-8' } })
 
-async function setup(options: { allowPersonalData?: boolean; loggedIn?: boolean; hosts?: string[] } = {}) {
+async function setup(
+  options: { allowPersonalData?: boolean; loggedIn?: boolean; hosts?: string[]; catalog?: unknown } = {}
+) {
   const world = new FakeWorld()
   const hosts = options.hosts ?? [STAGE_HOST]
   for (const [i, host] of hosts.entries()) {
@@ -64,7 +66,7 @@ async function setup(options: { allowPersonalData?: boolean; loggedIn?: boolean;
       workspaces: [workspace(WS_A, 'Alpha', i === 0 ? 'default' : `realm${i}`)]
     })
   }
-  world.backendRaw.set(DOCS_PATH, () => json(200, CATALOG))
+  world.backendRaw.set(DOCS_PATH, () => json(200, options.catalog ?? CATALOG))
   world.backendRaw.set(GUESTS_DOC, yaml(GUESTS_FALSE))
   world.backendRaw.set(EVENTS_DOC, yaml(EVENTS_TRUE))
   world.backendRaw.set(FINANCIALS_DOC, yaml('paths: {}\n'))
@@ -124,6 +126,30 @@ describe('markers decide check 7 (AC37, AC38, AC40)', () => {
     expect((await getGuests(h)).isError).toBe(false)
     expect(docPaths(h)).toEqual([])
     expect(markerLines(h)).toEqual([])
+  })
+
+  it('AC38: a true marker still refuses when the request path has a trailing slash', async () => {
+    const h = await setup()
+    const result = await h.call('api_get', { workspace: WS_A, service: 's-events', path: `/api/events/${EVENT_A}/` })
+    expect(result.body.error).toContain('may return personal data')
+    expect(h.world.toolRequests()).toHaveLength(0)
+  })
+
+  it('a service listed twice in the catalog loads the docs of both entries', async () => {
+    const h = await setup({
+      catalog: [
+        { service: 's-events-guests', docs: [{ name: 'guests', path: '/api-doc/api-doc.yaml' }] },
+        { service: 's-events-guests', docs: [{ name: 'guestspd', path: '/api-doc/pd/api-doc.yaml' }] }
+      ]
+    })
+    h.world.backendRaw.set(
+      `${DOCS_PATH}/s-events-guests/guestspd`,
+      yaml(EVENTS_TRUE.replace('{id}', '{event_id}/guests'))
+    )
+    const result = await getGuests(h)
+    expect(result.body.error).toContain('may return personal data')
+    expect(h.world.toolRequests()).toHaveLength(0)
+    expect(docPaths(h)).toEqual([DOCS_PATH, GUESTS_DOC, `${DOCS_PATH}/s-events-guests/guestspd`])
   })
 
   it('a refused secret or delete route loads no doc and sends nothing', async () => {

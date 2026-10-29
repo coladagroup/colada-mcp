@@ -47,13 +47,13 @@ export class DocMarkers {
 
   private async loadService(host: string, token: string, service: string, slot: Slot<MarkerIndex>): Promise<string> {
     try {
-      const entry = (await this.catalog(host, token)).find((item) => item.service === service)
-      if (!entry) {
+      const entries = (await this.catalog(host, token)).filter((item) => item.service === service)
+      if (entries.length === 0) {
         slot.good = []
         return 'no doc'
       }
       const index: MarkerIndex[number][] = []
-      for (const { name } of entry.docs) {
+      for (const { name } of entries.flatMap((entry) => entry.docs)) {
         if (typeof name !== 'string' || !DOC_NAME.test(name)) throw new LoadFailure('failed doc name')
         const path = `${CATALOG_PATH}/${encodeURIComponent(service)}/${encodeURIComponent(name)}`
         index.push(...indexOf(await this.get(host, token, path)))
