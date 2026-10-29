@@ -47,7 +47,9 @@ export class FirebaseSessions {
         this.cache.set(key, access)
         return access
       })
-      .finally(() => this.inflight.delete(key))
+      .finally(() => {
+        if (this.inflight.get(key) === request) this.inflight.delete(key)
+      })
     this.inflight.set(key, request)
     return request
   }
@@ -59,6 +61,7 @@ export class FirebaseSessions {
   clear() {
     this.generation++
     this.cache.clear()
+    this.inflight.clear()
   }
 
   private async mint(workspaceId: string, app: FirebaseAppName, state: CallState): Promise<FirebaseAccess> {

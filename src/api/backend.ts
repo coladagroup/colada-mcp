@@ -70,7 +70,7 @@ function failure(method: string, request: BackendRequest, status: number): strin
   if (status === 404 && request.notFound) return request.notFound
   if (status === 409 || status === 412) return messages.conflict(method, request.path, status)
   if (status === 428) return messages.ifMatchRequired(method, request.path)
-  if (status >= 500 && request.serverError) return request.serverError
+  if (status === 500 && request.serverError) return request.serverError
   return messages.failed(method, request.path, status)
 }
 

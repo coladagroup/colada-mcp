@@ -73,7 +73,10 @@ export function runFirebaseTool(
   handler: Handler<FirebaseToolContext>
 ): Promise<CallToolResult> {
   const ctx: FirebaseToolContext = { realm: realm || null, state: { httpStatus: null }, workspace: null, call }
-  return execute(app, tool, ctx, handler, () => ctx.call)
+  return execute(app, tool, ctx, handler, () => {
+    const { app: name, store, path, query } = ctx.call
+    return { app: name, store, path, query }
+  })
 }
 
 export function apiCallOf(input: {

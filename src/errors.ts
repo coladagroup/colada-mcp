@@ -106,6 +106,8 @@ export const messages = {
     'With only "own timesheet" access the MCP filters by your rows; orderBy, equalTo, startAt, endAt, limits and shallow cannot be set.',
   firebaseNoShallow: (node: string) =>
     `shallow is not available for ${node}: its records are filtered by project. Use "fields" to get small records.`,
+  firebaseHiddenSetTooLarge: (kind: string, node: string) =>
+    `${kind} of this workspace is larger than 10 MB. The MCP reads it to hide projects you may not see, so ${node} cannot be read.`,
   firebaseSecretField: (field: string, option: string) =>
     `"${field}" is a secret and is never returned, so it cannot be used in ${option}.`
 }

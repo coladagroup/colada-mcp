@@ -10,12 +10,6 @@ export interface CheckedPath {
   timesheetMode: TimesheetMode | null
 }
 
-export interface AccessContext {
-  permissions: ReadonlySet<string>
-  allowPersonalData: boolean
-  workspace: string
-}
-
 const MAX_PATH_BYTES = 768
 const FORBIDDEN_CHARACTERS = /[?#[\]$%\\]/
 
@@ -40,7 +34,13 @@ export function splitPath(path: string): string[] {
   return segments
 }
 
-export function checkFirebasePath(store: Store, path: string, access: AccessContext): CheckedPath {
+export interface FirebaseTarget {
+  rule: NodeRule
+  segments: string[]
+  rest: string[]
+}
+
+export function checkFirebaseTarget(store: Store, path: string, allowPersonalData: boolean): FirebaseTarget {
   const segments = splitPath(path)
   const [node, ...rest] = segments
   const rule = CAMPAIGNS_RULES.find((candidate) => candidate.store === store && candidate.node === node)
@@ -51,15 +51,23 @@ export function checkFirebasePath(store: Store, path: string, access: AccessCont
   if ((rule.link?.by === 'field' || rule.ownRows) && rest.length > 1) {
     throw new ToolError(messages.firebasePath(path, `read the whole record ${node}/<id>, not a part of it`))
   }
-  if (rule.group === 'personal' && !access.allowPersonalData)
-    throw new ToolError(messages.firebasePersonalNode(node ?? ''))
-  if (!access.permissions.has(APP_VIEW)) {
-    throw new ToolError(messages.firebaseMissingPermission([APP_VIEW], access.workspace, node ?? ''))
+  if (rule.group === 'personal' && !allowPersonalData) throw new ToolError(messages.firebasePersonalNode(rule.node))
+  return { rule, segments, rest }
+}
+
+export function checkFirebaseAccess(
+  target: FirebaseTarget,
+  permissions: ReadonlySet<string>,
+  workspace: string
+): CheckedPath {
+  const { rule } = target
+  if (!permissions.has(APP_VIEW)) {
+    throw new ToolError(messages.firebaseMissingPermission([APP_VIEW], workspace, rule.node))
   }
-  if (!rule.permissions.some((permission) => access.permissions.has(permission))) {
-    throw new ToolError(messages.firebaseMissingPermission(rule.permissions, access.workspace, node ?? ''))
+  if (!rule.permissions.some((permission) => permissions.has(permission))) {
+    throw new ToolError(messages.firebaseMissingPermission(rule.permissions, workspace, rule.node))
   }
-  return { rule, segments, rest, timesheetMode: rule.ownRows ? timesheetMode(access.permissions) : null }
+  return { ...target, timesheetMode: rule.ownRows ? timesheetMode(permissions) : null }
 }
 
 function timesheetMode(permissions: ReadonlySet<string>): TimesheetMode {

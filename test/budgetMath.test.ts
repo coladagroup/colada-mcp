@@ -5,7 +5,6 @@ import {
   calculateAllocated,
   calculateHierarchyTotal,
   calculateReportsTotal,
-  calculateReserveBase,
   calculateReserveRowAmount,
   calculateTotal,
   flattenBudget,
@@ -135,12 +134,6 @@ describe('golden cases from colada-campaigns-backoffice src/Campaigns/utils.test
 
     it('returns 0 for non-reserve rows', () => {
       expect(calculateReserveRowAmount(leaf(100), [leaf(100)])).toBe(0)
-    })
-  })
-
-  describe('calculateReserveBase', () => {
-    it('sums sibling non-reserve rows and excludes reserves', () => {
-      expect(calculateReserveBase([leaf(1000), leaf(500), linearFee(10)])).toBe(1500)
     })
   })
 

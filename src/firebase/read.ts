@@ -15,7 +15,13 @@ import {
 import { firestoreFieldPath, fromFirestoreFields } from './firestoreValues.js'
 import type { FirebaseResponse } from './http.js'
 import { applyLocalOps, fieldsUsed, hasLocalOps, type LocalOps } from './localOps.js'
-import { type CheckedPath, checkFirebasePath, splitPath } from './policy/check.js'
+import {
+  type CheckedPath,
+  type FirebaseTarget as CheckedTarget,
+  checkFirebaseAccess,
+  checkFirebaseTarget,
+  splitPath
+} from './policy/check.js'
 import { assertUsable, redact } from './policy/redact.js'
 import { applyRowRules, campaignsRole, hiddenProjectIds } from './policy/rows.js'
 import type { NodeRule, ProjectKind, Store } from './policy/tables.js'
@@ -105,14 +111,15 @@ function rtdbRequest(
   segments: readonly string[],
   query: string,
   node: string,
-  shown: string
+  shown: string,
+  tooLarge: () => string = () => messages.firebaseTooLarge('rtdb', shown, indexesOf(node))
 ) {
   return (access: FirebaseAccess) =>
     app.firebaseHttp.request({
       url: rtdbUrl(access, reader.workspace, segments, query),
       store: 'rtdb',
       path: shown,
-      tooLarge: () => messages.firebaseTooLarge('rtdb', shown, indexesOf(node))
+      tooLarge
     })
 }
 
@@ -123,14 +130,28 @@ function linkedKinds(rule: NodeRule): ProjectKind[] {
   return ['projects', 'planner']
 }
 
+const hiddenByAccess = new WeakMap<FirebaseAccess, Map<ProjectKind, Promise<Set<string>>>>()
+
 async function hiddenProjects(app: App, reader: Reader, rule: NodeRule): Promise<Set<string>> {
   const kinds = linkedKinds(rule)
   if (kinds.length === 0) return new Set()
   const access = await reader.access()
-  const metas = await Promise.all(
-    kinds.map(async (kind) => (await reader.send(rtdbRequest(app, reader, [kind], '', kind, kind), 'rtdb', kind)).body)
+  const byKind = hiddenByAccess.get(access) ?? new Map<ProjectKind, Promise<Set<string>>>()
+  hiddenByAccess.set(access, byKind)
+  const sets = await Promise.all(
+    kinds.map((kind) => {
+      const cached = byKind.get(kind)
+      if (cached) return cached
+      const tooLarge = () => messages.firebaseHiddenSetTooLarge(kind, rule.node)
+      const pending = reader
+        .send(rtdbRequest(app, reader, [kind], '', kind, kind, tooLarge), 'rtdb', kind)
+        .then((response) => hiddenProjectIds([response.body], access.uid, campaignsRole(access.roles)))
+      pending.catch(() => byKind.delete(kind))
+      byKind.set(kind, pending)
+      return pending
+    })
   )
-  return hiddenProjectIds(metas, access.uid, campaignsRole(access.roles))
+  return new Set(sets.flatMap((set) => [...set]))
 }
 
 function isRecords(value: unknown): value is Record<string, unknown> {
@@ -154,25 +175,19 @@ function finish(result: Record<string, unknown>, removed: Set<string>, removedRe
   return output
 }
 
-function assertOpsUsable(checked: CheckedPath, ops: LocalOps, allowPersonalData: boolean) {
+function assertOpsUsable(checked: CheckedTarget, ops: LocalOps, allowPersonalData: boolean) {
   for (const { field, option } of fieldsUsed(ops)) assertUsable(field, option, checked.rule, allowPersonalData)
 }
 
 export async function readRtdb(app: App, ctx: FirebaseToolContext, input: RtdbInput) {
-  const reader = await openReader(app, ctx, input)
-  const access = await reader.access()
   const allowPersonalData = app.deps.allowPersonalData
-  const checked = checkFirebasePath('rtdb', input.path, {
-    permissions: access.permissions,
-    allowPersonalData,
-    workspace: reader.workspace
-  })
-  const { rule, rest } = checked
+  const target = checkFirebaseTarget('rtdb', input.path, allowPersonalData)
+  const { rule, rest } = target
   const ops: LocalOps = { where: input.where, fields: input.fields, groupBy: input.groupBy, sum: input.sum }
   if (input.shallow && hasLocalOps(ops)) {
     throw new ToolError(messages.firebaseQuery('shallow cannot be combined with where, fields, groupBy or sum'))
   }
-  assertOpsUsable(checked, ops, allowPersonalData)
+  assertOpsUsable(target, ops, allowPersonalData)
   const query: RtdbQuery = {
     shallow: input.shallow,
     orderBy: input.orderBy,
@@ -190,6 +205,10 @@ export async function readRtdb(app: App, ctx: FirebaseToolContext, input: RtdbIn
   if (input.orderBy !== undefined && input.orderBy !== '$key' && input.orderBy !== '$value') {
     assertUsable(input.orderBy, 'orderBy', rule, allowPersonalData)
   }
+  const ownerQuery = rtdbQueryString(query)
+  const reader = await openReader(app, ctx, input)
+  const access = await reader.access()
+  const checked = checkFirebaseAccess(target, access.permissions, reader.workspace)
   let queryString: string
   if (checked.timesheetMode === 'own' && rest.length === 0) {
     if (hasQuery) {
@@ -197,7 +216,7 @@ export async function readRtdb(app: App, ctx: FirebaseToolContext, input: RtdbIn
     }
     queryString = rtdbQueryString({ orderBy: 'owner', equalTo: access.uid })
   } else {
-    queryString = rtdbQueryString(query)
+    queryString = ownerQuery
   }
   const hidden = await hiddenProjects(app, reader, rule)
   const response = await reader
@@ -218,7 +237,7 @@ export async function readRtdb(app: App, ctx: FirebaseToolContext, input: RtdbIn
   const { value, removed } = redact(rows.value, rest, rule, allowPersonalData)
   let data: unknown = value
   if (hasLocalOps(ops)) {
-    if (value === null) data = {}
+    if (value === null) data = applyLocalOps({}, ops)
     else if (!isRecords(value)) throw new ToolError(messages.firebaseNotRecords(localOptionName(ops), input.path))
     else data = applyLocalOps(value, ops)
   } else if (isRecords(value)) {
@@ -245,15 +264,9 @@ interface FirestoreDocument {
 }
 
 export async function readFirestore(app: App, ctx: FirebaseToolContext, input: FirestoreInput) {
-  const reader = await openReader(app, ctx, input)
-  const access = await reader.access()
   const allowPersonalData = app.deps.allowPersonalData
-  const checked = checkFirebasePath('firestore', input.path, {
-    permissions: access.permissions,
-    allowPersonalData,
-    workspace: reader.workspace
-  })
-  const { rule, rest } = checked
+  const target = checkFirebaseTarget('firestore', input.path, allowPersonalData)
+  const { rule, rest } = target
   const document = rest.length === 1
   if (document && (input.pageSize !== undefined || input.pageToken !== undefined)) {
     throw new ToolError(messages.firebaseQuery('pageSize and pageToken work on a collection, not on one document'))
@@ -263,9 +276,12 @@ export async function readFirestore(app: App, ctx: FirebaseToolContext, input: F
   if (!document) params.set('pageSize', String(input.pageSize ?? DEFAULT_PAGE_SIZE))
   if (!document && input.pageToken) params.set('pageToken', input.pageToken)
   const linkFields = rule.link?.by === 'field' ? rule.link.fields : []
-  const addedLinks = input.fields ? linkFields.filter((field) => !input.fields?.includes(field)) : []
-  for (const field of [...(input.fields ?? []), ...addedLinks])
-    params.append('mask.fieldPaths', firestoreFieldPath(field))
+  const masked = input.fields?.length ? input.fields : []
+  const addedLinks = masked.length ? linkFields.filter((field) => !masked.includes(field)) : []
+  for (const field of [...masked, ...addedLinks]) params.append('mask.fieldPaths', firestoreFieldPath(field))
+  const reader = await openReader(app, ctx, input)
+  const access = await reader.access()
+  const checked = checkFirebaseAccess(target, access.permissions, reader.workspace)
   const hidden = await hiddenProjects(app, reader, rule)
   const path = ['workspaces', reader.workspace, ...checked.segments].map(encodeURIComponent).join('/')
   const response = await reader.send(
@@ -341,16 +357,17 @@ function exchangeRatesOf(value: unknown): ExchangeRates {
 }
 
 export async function readBudget(app: App, ctx: FirebaseToolContext, input: BudgetInput) {
-  const reader = await openReader(app, ctx, { ...input, app: 'campaigns', path: `${input.kind}/${input.id}` })
-  const access = await reader.access()
-  const allowPersonalData = app.deps.allowPersonalData
-  const context = { permissions: access.permissions, allowPersonalData, workspace: reader.workspace }
   if (splitPath(input.id).length !== 1) {
     throw new ToolError(messages.firebasePath(input.id, 'the id must be one path segment'))
   }
+  const allowPersonalData = app.deps.allowPersonalData
   const shown = `${input.kind}/${input.id}`
-  const budget = checkFirebasePath('rtdb', `${BUDGET_NODE[input.kind]}/${input.id}`, context)
-  const meta = checkFirebasePath('rtdb', shown, context)
+  const budgetTarget = checkFirebaseTarget('rtdb', `${BUDGET_NODE[input.kind]}/${input.id}`, allowPersonalData)
+  const metaTarget = checkFirebaseTarget('rtdb', shown, allowPersonalData)
+  const reader = await openReader(app, ctx, { ...input, app: 'campaigns', path: shown })
+  const access = await reader.access()
+  const budget = checkFirebaseAccess(budgetTarget, access.permissions, reader.workspace)
+  const meta = checkFirebaseAccess(metaTarget, access.permissions, reader.workspace)
   const hidden = await hiddenProjects(app, reader, meta.rule)
   if (hidden.has(input.id)) throw new ToolError(messages.firebaseNotFound('rtdb', shown))
   const read = async (checked: CheckedPath) =>

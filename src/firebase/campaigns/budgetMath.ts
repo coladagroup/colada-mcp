@@ -70,11 +70,6 @@ export function calculate(
   return multiplied(price, content, currency, rates)
 }
 
-export function calculateOptionTotal(curr: BudgetRow, currency = CHF_CURRENCY, rates: ExchangeRates = null): number {
-  const price = curr.content?.price ? Number(curr.content.price) : 0
-  return curr.content ? multiplied(price, curr.content, currency, rates) : price
-}
-
 function calculateInvoices(item: BudgetRow, rates: ExchangeRates): number {
   let sum = 0
   const invoices = item.content?.invoices
@@ -163,15 +158,6 @@ export function calculateReserveRowAmount(
 ): number {
   if (item.content?.effort !== RESERVE_EFFORT || !siblings) return 0
   return reserveFeeAmount(item, siblingBaseTotal(siblings, includeEffort, currency, rates), currency, rates)
-}
-
-export function calculateReserveBase(
-  siblings: BudgetRow[] | null,
-  currency = CHF_CURRENCY,
-  rates: ExchangeRates = null,
-  includeEffort = false
-): number {
-  return siblings ? siblingBaseTotal(siblings, includeEffort, currency, rates) : 0
 }
 
 export function calculateHierarchyTotal(

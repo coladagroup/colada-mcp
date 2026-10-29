@@ -50,7 +50,7 @@ export class FirebaseHttp {
       throw new ToolError(messages.firebaseFailed(request.store, request.path, null))
     }
     if (response.status < 200 || response.status >= 300) {
-      const errorText = (await readBytes(response, ERROR_TEXT_MAX_CHARS)).toString('utf8')
+      const errorText = (await readBytes(response, ERROR_TEXT_MAX_CHARS))?.toString('utf8') ?? ''
       return {
         status: response.status,
         body: parseOrNull(errorText),
@@ -62,6 +62,7 @@ export class FirebaseHttp {
       throw new ToolError(request.tooLarge())
     }
     const bytes = await readBytes(response, MAX_FIREBASE_DOWNLOAD_BYTES + 1)
+    if (bytes === null) throw new ToolError(messages.firebaseFailed(request.store, request.path, response.status))
     if (bytes.byteLength > MAX_FIREBASE_DOWNLOAD_BYTES) throw new ToolError(request.tooLarge())
     const text = bytes.toString('utf8')
     try {
@@ -72,7 +73,7 @@ export class FirebaseHttp {
   }
 }
 
-async function readBytes(response: Response, maxBytes: number): Promise<Buffer> {
+async function readBytes(response: Response, maxBytes: number): Promise<Buffer | null> {
   const reader = response.body?.getReader()
   if (!reader) return Buffer.alloc(0)
   const chunks: Uint8Array[] = []
@@ -85,7 +86,7 @@ async function readBytes(response: Response, maxBytes: number): Promise<Buffer> 
       chunks.push(value)
     }
   } catch {
-    return Buffer.alloc(0)
+    return null
   } finally {
     await reader.cancel().catch(() => undefined)
   }

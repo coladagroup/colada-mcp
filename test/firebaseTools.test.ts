@@ -648,3 +648,116 @@ describe('Stage 6 review findings (STAGE6-REVIEW-phase4.md)', () => {
     expect(deputy.body.removedFields).toEqual(['deputies'])
   })
 })
+
+describe('PR #13 code review findings', () => {
+  function brokenStream() {
+    let sent = false
+    return new Response(
+      new ReadableStream({
+        pull(controller) {
+          if (!sent) {
+            sent = true
+            controller.enqueue(new TextEncoder().encode('{"p2":{"isPri'))
+          } else controller.error(new Error('connection reset'))
+        }
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+
+  it('1: a body that breaks while reading fails closed, also on the internal projects read', async () => {
+    const { h, fw } = await setup()
+    fw.rtdbRaw = (url) => (url.pathname.endsWith('/projects.json') ? brokenStream() : undefined)
+    const result = await rtdb(h, { path: 'timesheet' })
+    expect(result.isError).toBe(true)
+    expect(result.text).not.toContain('"t3"')
+    fw.rtdbRaw = (url) => (url.pathname.endsWith('/tags.json') ? brokenStream() : undefined)
+    expect((await rtdb(h, { path: 'tags' })).body.error).toBe('rtdb tags failed (200).')
+  })
+
+  it('2: the hidden-project set is read once per Firebase token, not on every call', async () => {
+    const { h, world } = await setup()
+    await rtdb(h, { path: 'timesheet' })
+    await rtdb(h, { path: 'timesheet', groupBy: ['owner'] })
+    await rtdb(h, { path: 'projects' })
+    const projectReads = rtdbRequests(world).filter((r) => r.url.pathname.endsWith('/projects.json'))
+    expect(projectReads).toHaveLength(2)
+  })
+
+  it('2: an internal projects read over 10 MB gets its own message', async () => {
+    const { h, fw } = await setup()
+    fw.rtdbRaw = (url) =>
+      url.pathname.endsWith('/projects.json')
+        ? new Response(JSON.stringify({ big: 'x'.repeat(10_000_100) }), {
+            headers: { 'Content-Type': 'application/json' }
+          })
+        : undefined
+    expect((await rtdb(h, { path: 'timesheet' })).body.error).toBe(
+      'projects of this workspace is larger than 10 MB. The MCP reads it to hide projects you may not see, so timesheet cannot be read.'
+    )
+  })
+
+  it('3: a field below a removed field cannot be used in where / groupBy / fields', async () => {
+    const { h, fw, world } = await setup()
+    fw.permissions.push('campaigns_app/leads:view')
+    for (const args of [
+      { where: [{ field: 'contact.email', op: 'eq', value: 'a@b.c' }] },
+      { groupBy: ['contact.email'] },
+      { fields: ['contact.email'] }
+    ]) {
+      expect((await rtdb(h, { path: 'deals', ...args })).body.error).toMatch(/"contact.email" is personal data/)
+    }
+    expect(
+      (await rtdb(h, { path: 'projects', where: [{ field: 'deputies.0', op: 'eq', value: ME }] })).body.error
+    ).toMatch(/"deputies.0" is personal data/)
+    expect(rtdbRequests(world)).toHaveLength(0)
+  })
+
+  it('4: only a 500 of s-access means "not set up"; a 503 is a plain failure', async () => {
+    const { h, world } = await setup()
+    world.backendStatus.set('/_gw/s-access/api/auth/integrations/campaigns/firebase/config', 503)
+    const error = String((await rtdb(h, { path: 'tags' })).body.error)
+    expect(error).not.toContain('not set up')
+    expect(error).toContain('(503)')
+  })
+
+  it('5: groupBy on a missing node returns the groups shape', async () => {
+    const { h } = await setup()
+    expect((await rtdb(h, { path: 'costCenters', groupBy: ['name'], sum: ['x'] })).body).toMatchObject({
+      groups: [],
+      total: { count: 0, sums: { x: 0 } }
+    })
+  })
+
+  it('7: an empty Firestore fields list means all fields', async () => {
+    const { h, fw, world } = await setup()
+    fw.permissions.push('campaigns_app/offers:view')
+    fw.firestore[WS_A] = { snapshots: { n1: { name: 'Offer v1', project: 'p1', type: 'pdf' } } }
+    expect((await firestore(h, { path: 'snapshots/n1', fields: [] })).body.data).toEqual({
+      name: 'Offer v1',
+      project: 'p1',
+      type: 'pdf'
+    })
+    expect(firestoreRequests(world).at(-1)?.url.searchParams.getAll('mask.fieldPaths')).toEqual([])
+  })
+
+  it('10: the call log holds exactly the documented keys', async () => {
+    const { h } = await setup()
+    await rtdb(h, { path: 'tags' })
+    expect(Object.keys(h.logs.at(-1) ?? {}).sort()).toEqual(
+      ['app', 'httpStatus', 'path', 'query', 'realm', 'store', 'time', 'tool', 'user', 'workspace'].sort()
+    )
+  })
+
+  it('12: invalid paths, unknown nodes, bad budget ids and bad query options send no request at all', async () => {
+    const { h, world } = await setup()
+    const before = world.requests.length
+    await rtdb(h, { path: 'secrets' })
+    await rtdb(h, { path: '../x' })
+    await rtdb(h, { path: 'tags', equalTo: 'x' })
+    await rtdb(h, { path: 'timesheet', where: [{ field: 'description', op: 'exists' }] })
+    await firestore(h, { path: 'requests' })
+    await h.call('campaigns_budget', { workspace: WS_A, kind: 'projects', id: 'a/b' })
+    expect(world.requests.slice(before).map((r) => r.url.pathname)).toEqual([])
+  })
+})

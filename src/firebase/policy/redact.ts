@@ -64,7 +64,10 @@ export function redact(
 }
 
 export function assertUsable(field: string, option: string, rule: NodeRule, allowPersonalData: boolean) {
-  const hit = matching(patternsOf(rule, allowPersonalData), ['*record*', ...field.split('.')])
+  const patterns = patternsOf(rule, allowPersonalData)
+  const path = ['*record*', ...field.split('.')]
+  let hit: Pattern | undefined
+  for (let length = 2; length <= path.length && !hit; length++) hit = matching(patterns, path.slice(0, length))
   if (!hit) return
   throw new ToolError(
     hit.always ? messages.firebaseSecretField(field, option) : messages.firebaseHiddenField(field, option)

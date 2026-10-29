@@ -64,10 +64,6 @@ export interface RowResult {
   removedRecords: number
 }
 
-export function needsHiddenProjects(rule: NodeRule): boolean {
-  return rule.link !== undefined
-}
-
 export function applyRowRules(rule: NodeRule, rest: readonly string[], value: unknown, ctx: RowContext): RowResult {
   const notFound = () => new ToolError(messages.firebaseNotFound(ctx.store, ctx.path))
   const ownOnly = rule.ownRows === true && ctx.timesheetMode === 'own'

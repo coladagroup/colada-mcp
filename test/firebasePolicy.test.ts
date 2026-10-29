@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type AccessContext, checkFirebasePath, splitPath } from '../src/firebase/policy/check.js'
+import { checkFirebaseAccess, checkFirebaseTarget, splitPath } from '../src/firebase/policy/check.js'
 import { assertUsable, redact } from '../src/firebase/policy/redact.js'
 import { applyRowRules, campaignsRole, hiddenProjectIds, isHiddenProject } from '../src/firebase/policy/rows.js'
 import { CAMPAIGNS_RULES, type NodeRule } from '../src/firebase/policy/tables.js'
@@ -121,6 +121,20 @@ const CONTRACT_FIELDS: FieldRow[] = [
   ['D01', 'P', ['contact', 'description', 'assignees', 'mentions', 'mentionsComment']],
   ['D03', 'P', ['pdf']]
 ]
+
+interface AccessContext {
+  permissions: ReadonlySet<string>
+  allowPersonalData: boolean
+  workspace: string
+}
+
+function checkFirebasePath(store: 'rtdb' | 'firestore', path: string, context: AccessContext) {
+  return checkFirebaseAccess(
+    checkFirebaseTarget(store, path, context.allowPersonalData),
+    context.permissions,
+    context.workspace
+  )
+}
 
 function ruleOf(id: string): NodeRule {
   const found = CAMPAIGNS_RULES.find((rule) => rule.id === id)

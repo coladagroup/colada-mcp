@@ -286,3 +286,17 @@ describe('Firebase session (SPEC-phase4 F16, CONTRACT-phase4 §6.1)', () => {
     expect(world.requests.filter((r) => r.url.pathname === TOKEN_PATH)).toHaveLength(61)
   })
 })
+
+describe('PR #13 code review finding 8', () => {
+  it('a session end during a mint does not make the next call reuse the old mint', async () => {
+    const { world, firebase, state } = await setup()
+    world.backendDelayMs = 20
+    const running = firebase.access(WS_A, 'campaigns', state)
+    await new Promise((r) => setTimeout(r, 5))
+    firebase.clear()
+    world.backendDelayMs = 0
+    const next = firebase.access(WS_A, 'campaigns', state)
+    await expect(running).rejects.toThrow('The session ended while this call was running.')
+    await expect(next).resolves.toMatchObject({ uid: 'id-frank' })
+  })
+})
