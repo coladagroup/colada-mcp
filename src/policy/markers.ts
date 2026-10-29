@@ -34,12 +34,14 @@ export function indexDoc(yamlText: string): MarkerIndex {
     if (!key.startsWith('/api/') || !isMap(item)) continue
     const path = key.replace(PROJECTION_SUFFIX, '')
     const segments = segmentsOf(path.replace(TRAILING_SLASH, ''))
-    const pathMarker = markerOf(item) ?? docMarker
+    const target = item.$ref === undefined ? item : localRef(doc, item.$ref)
+    const operations = target ?? item
+    const pathMarker = markerOf(item) ?? markerOf(target) ?? docMarker
     for (const method of OPERATION_KEYS) {
-      const operation = item[method]
-      if (!isMap(operation) && item.$ref === undefined) continue
+      const operation = operations[method]
+      if (!isMap(operation) && target !== undefined) continue
       const marker = markerOf(operation) ?? pathMarker
-      const partial = item.$ref !== undefined || TRAILING_SLASH.test(path)
+      const partial = target === undefined || TRAILING_SLASH.test(path)
       index.push({ method: method.toUpperCase(), segments, marker: partial ? onlyTrue(marker) : marker })
     }
   }
@@ -64,6 +66,17 @@ function bestMarker(index: MarkerIndex, method: string, parts: readonly string[]
   if (best.some((operation) => operation.marker === true)) return true
   if (best.some((operation) => operation.marker === undefined)) return undefined
   return false
+}
+
+function localRef(doc: Record<string, unknown>, ref: unknown): Record<string, unknown> | undefined {
+  if (typeof ref !== 'string' || !ref.startsWith('#/')) return undefined
+  let node: unknown = doc
+  for (const part of ref.slice(2).split('/')) {
+    const key = part.replaceAll('~1', '/').replaceAll('~0', '~')
+    if (!isMap(node) || !Object.hasOwn(node, key)) return undefined
+    node = node[key]
+  }
+  return isMap(node) && node.$ref === undefined ? node : undefined
 }
 
 function onlyTrue(marker: Marker): Marker {

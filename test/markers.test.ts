@@ -375,3 +375,59 @@ paths:
     expect(markerFor(index, 'GET', '/api/events/e1/')).toBe(true)
   })
 })
+
+describe('local $ref path items (M13)', () => {
+  const doc = `
+info:
+  x-personal-data: false
+paths:
+  /api/events/{id}:
+    $ref: '#/x-items/event'
+  /api/events/{id}/settings:
+    $ref: '#/x-items/missing'
+  /api/events/{id}/settings/{key}:
+    $ref: 'other.yaml#/event'
+x-items:
+  event:
+    get:
+      x-personal-data: true
+    patch: {}
+`
+
+  it('reads the operations of a local $ref path item', () => {
+    const index = indexDoc(doc)
+    expect(markerFor(index, 'GET', '/api/events/e1')).toBe(true)
+    expect(markerFor(index, 'PATCH', '/api/events/e1')).toBe(false)
+    expect(markerFor(index, 'PUT', '/api/events/e1')).toBeUndefined()
+  })
+
+  it('an unresolved $ref gives no marker', () => {
+    const index = indexDoc(doc)
+    expect(markerFor(index, 'GET', '/api/events/e1/settings')).toBeUndefined()
+    expect(markerFor(index, 'GET', '/api/events/e1/settings/k')).toBeUndefined()
+  })
+})
+
+describe('$ref path items that do not resolve to operations (M13)', () => {
+  it.each([
+    ['a chained $ref', "'#/x-items/link'"],
+    ['an inherited key', "'#/__proto__'"]
+  ])('%s gives no marker, so a less specific false key does not win', (_, ref) => {
+    const doc = `
+info:
+  x-personal-data: false
+paths:
+  /api/events/{id}/guests:
+    $ref: ${ref}
+  /api/events/{id}/{rest}:
+    get: {}
+x-items:
+  link:
+    $ref: '#/x-items/event'
+  event:
+    get:
+      x-personal-data: true
+`
+    expect(markerFor(indexDoc(doc), 'GET', '/api/events/e1/guests')).toBeUndefined()
+  })
+})
