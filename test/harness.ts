@@ -72,6 +72,7 @@ export class FakeWorld {
   readonly events = new Map<string, Map<string, unknown>>()
   readonly backendStatus = new Map<string, number>()
   readonly backendRaw = new Map<string, (url: URL, headers: Record<string, string>) => Response>()
+  readonly externalRaw = new Map<string, (url: URL, init: RequestInit | undefined) => Response | Promise<Response>>()
   backendDelayMs = 0
   tokenDelayMs = 0
   private counter = 0
@@ -117,6 +118,7 @@ export class FakeWorld {
     this.counter++
     const claims: Record<string, unknown> = {
       preferred_username: realm.user,
+      sub: `id-${realm.user}`,
       iss: `https://${host}/auth/realms/x`,
       exp: this.now + this.tokenTtl,
       jti: `access-${this.counter}`
@@ -145,6 +147,8 @@ export class FakeWorld {
     const form = typeof init?.body === 'string' ? new URLSearchParams(init.body) : null
     const body = typeof init?.body === 'string' ? init.body : null
     this.requests.push({ url, method: init?.method ?? 'GET', headers, form, body, redirect: init?.redirect })
+    const external = this.externalRaw.get(url.host)
+    if (external) return external(url, init)
     const realm = this.realms.get(url.host)
     if (!realm) throw new TypeError('fetch failed')
     if (url.pathname.endsWith('/protocol/openid-connect/token')) {

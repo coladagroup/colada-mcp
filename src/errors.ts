@@ -70,5 +70,48 @@ export const messages = {
   keycloakRefused: (host: string, status: number) => `Keycloak at ${host} refused the token request (HTTP ${status}).`,
   logoutFailed: (realms: string[]) =>
     `Could not remove the stored session of realm ${realms.join(', ')} from the OS keyring. Call logout again.`,
-  noWorkspace: (realm: string) => `You have no workspace in realm ${realm}.`
+  noWorkspace: (realm: string) => `You have no workspace in realm ${realm}.`,
+  firebaseOtherWorkspace: () => 'The Firebase token is for another workspace. Nothing was read.',
+  firebaseBadConfig: (workspace: string, field: string, value: string) =>
+    `The Campaigns config of workspace ${workspace} has an invalid ${field} ("${value}"). Nothing was read.`,
+  firebaseNoAccess: (workspace: string) =>
+    `You have no Campaigns access in workspace ${workspace} (campaigns_app:view).`,
+  firebaseNotSetUp: (workspace: string) => `Campaigns is not set up for workspace ${workspace}.`,
+  firebaseSignInFailed: (status: number | null, code: string | null) =>
+    `Firebase sign-in failed (${status ?? 'no response'}${code ? `, ${code}` : ''}). Nothing was read.`,
+  firebasePermissionsUnreadable: (workspace: string) =>
+    `Cannot read your Campaigns permissions in workspace ${workspace}. Nothing was read.`,
+  firebaseRefused: (path: string) => `Firebase refused the read of ${path} (expired token or a rules violation).`,
+  firebaseTooLarge: (store: string, path: string, indexes: string) =>
+    `${store} ${path} is larger than 10 MB. Narrow it with orderBy on an indexed child (${indexes}), limitToFirst / limitToLast, or shallow.`,
+  firebaseFailed: (store: string, path: string, status: number | null) =>
+    `${store} ${path} failed (${status ?? 'no response'}).`,
+  firebasePath: (path: string, reason: string) =>
+    `Path "${path}" is not allowed: ${reason}. Paths are relative to the workspace, for example "timesheet" or "projects/<id>".`,
+  firebaseNotFound: (store: string, path: string) => `Nothing found at ${store} ${path}.`,
+  firebasePersonalNode: (node: string) =>
+    `${node} holds personal data. It is off; COLADA_ALLOW_PERSONAL_DATA=true turns it on.`,
+  firebaseMissingPermission: (permissions: readonly string[], workspace: string, node: string) =>
+    `You lack ${permissions.length === 1 ? permissions[0] : `one of ${permissions.join(', ')}`} in workspace ${workspace}, so ${node} cannot be read.`,
+  firebaseHiddenField: (field: string, option: string) =>
+    `"${field}" is personal data and is hidden, so it cannot be used in ${option}. COLADA_ALLOW_PERSONAL_DATA=true shows it.`,
+  firebaseQuery: (reason: string) => `The query options are not valid: ${reason}.`,
+  firebaseNoIndex: (child: string, node: string, indexes: string) =>
+    `RTDB has no index on "${child}" for ${node}. Use an indexed child (${indexes}) or "where" (filters after a full download).`,
+  firebaseResultTooLarge: () =>
+    'The result is larger than 500 KB and is not returned. Use "fields", "where", "groupBy" or a narrower path.',
+  firebaseNotRecords: (option: string, path: string) =>
+    `"${option}" works on a list of records, but ${path} is one record.`,
+  firebaseOwnRowsOnly: () =>
+    'With only "own timesheet" access the MCP filters by your rows; orderBy, equalTo, startAt, endAt, limits and shallow cannot be set.',
+  firebaseNoShallow: (node: string) =>
+    `shallow is not available for ${node}: its records are filtered by project. Use "fields" to get small records.`,
+  firebaseHiddenSetTooLarge: (kind: string, node: string) =>
+    `${kind} of this workspace is larger than 10 MB. The MCP reads it to hide projects you may not see, so ${node} cannot be read.`,
+  firebaseEntityKeyed: (node: string) =>
+    `${node} cannot be read: it is keyed by budget rows, activities and other entities, so the MCP cannot hide ${node} of projects you may not see.`,
+  firebaseAccessChanged: () =>
+    'Your Campaigns access changed while this call was running. Nothing was returned; call the tool again.',
+  firebaseSecretField: (field: string, option: string) =>
+    `"${field}" is a secret and is never returned, so it cannot be used in ${option}.`
 }

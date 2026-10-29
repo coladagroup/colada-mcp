@@ -4,6 +4,8 @@ import { fetchRealm } from './api/realmConfig.js'
 import { RealmSession, type SessionDeps } from './auth/session.js'
 import type { CallLog } from './callLog.js'
 import { messages, ToolError } from './errors.js'
+import { FirebaseHttp } from './firebase/http.js'
+import { FirebaseSessions } from './firebase/session.js'
 import { WorkspaceDirectory } from './workspaces.js'
 
 export interface AppDeps extends SessionDeps {
@@ -15,17 +17,20 @@ export interface AppDeps extends SessionDeps {
 export interface RealmContext {
   session: RealmSession
   directory: WorkspaceDirectory
+  firebase: FirebaseSessions
 }
 
 export class App {
   readonly api: ApiClient
   readonly markers: DocMarkers
+  readonly firebaseHttp: FirebaseHttp
   private readonly realms = new Map<string, RealmContext>()
   private realmNames: Promise<string[]> | null = null
 
   constructor(readonly deps: AppDeps) {
     this.api = new ApiClient(deps.fetch)
     this.markers = new DocMarkers(this.api, deps.now, deps.log)
+    this.firebaseHttp = new FirebaseHttp(this.api, deps.fetch)
   }
 
   get multiRealm(): boolean {
@@ -41,7 +46,11 @@ export class App {
     const existing = this.realms.get(realm)
     if (existing) return existing
     const session = new RealmSession(realm, host, this.deps)
-    const context = { session, directory: new WorkspaceDirectory(this.api, session) }
+    const context = {
+      session,
+      directory: new WorkspaceDirectory(this.api, session),
+      firebase: new FirebaseSessions(this.api, this.firebaseHttp, session, this.deps.now)
+    }
     this.realms.set(realm, context)
     return context
   }

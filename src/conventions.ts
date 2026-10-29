@@ -7,7 +7,8 @@ export const INSTRUCTIONS = `Colada backoffice API through get_api_doc, api_get 
 - Take only the personal data the task needs.
 - To change a record: read it, take the revision from X-ETag, send the write with If-Match: <revision>. Some routes ignore If-Match (PATCH /api/events/{id}), so a write there can overwrite a colleague's change.
 - Many updates replace more than the fields you send: PATCH /api/events/{id} needs all required fields; an email template PATCH clears sendingTriggers, sendingCondition and visibleIfForSender when they are missing; guest PATCH /guests/{id}, template l10n and form structure are replaced as a whole. Always send the complete record you read, with your change applied.
-- Before a series of writes, and before publishing or unpublishing anything, show the user the planned calls and wait for a yes. Try a bulk change on one record first.`
+- Before a series of writes, and before publishing or unpublishing anything, show the user the planned calls and wait for a yes. Try a bulk change on one record first.
+- Campaigns data (projects, offers, budgets, timesheets) is in Firebase, not in the backoffice API: use rtdb_get, firestore_get and campaigns_budget (read only). Read the "Campaigns data" part of get_conventions first.`
 
 export const CONVENTIONS = `# Colada backoffice API conventions
 
@@ -74,6 +75,37 @@ Guest schema of an event (s-events-guests, allowed without personal data)
 Guests (s-events-guests, personal data)
 - PATCH /api/events/{e}/guests/{g} replaces all attributes: missing ones are removed.
 - PATCH /api/events/{e}/guests/{g}/attributes changes only the attributes you send.
+
+## Campaigns data
+
+Campaigns keeps its data in Firebase. rtdb_get reads the Realtime Database, firestore_get reads Firestore, campaigns_budget computes a budget. All three only read. Paths are relative to the workspace: "timesheet", not "workspaces/<id>/timesheet". You see what the Campaigns app shows you: each node needs its Campaigns permission, and projects you may not see (private projects, lobby roles) are left out everywhere. removedRecords counts the records left out.
+
+Realtime Database nodes (rtdb_get)
+- projects/<id>: projects (name, number, status, currency, total, allocated, account, startDate, endDate, archived, isPrivate). Index: account, archived, guestsEventId, and owner (owner is personal data on projects, so it works only with personal data on).
+- planner/<id>: offers. budgets/<projectId> and plannerBudgets/<offerId>: the budget tree of a project or offer (rows with content and subRows).
+- timesheet/<id>: booked time (owner, date YYYY-MM-DD, hours, minutes, project, entity, tag, account). Index: owner, project. There is no index on date: filter dates with where.
+- tags, units, costCenters, currencies, pdfTemplates, checklists, knowledgeBase, projectCounter: reference data.
+- deals (leads), invoices/<projectId>, taskBoards/<source>, tasks (index: source), emailTemplates, companyDetails.
+- Personal data, off by default: activities, comments, chat, richChat, history, externalAssignees, accounts.
+
+Firestore collections (firestore_get)
+- serviceTickets, boardColumns, snapshots (offer PDFs), requestForms, approvalRules; accountInfos (personal data).
+
+How records link
+- timesheet.project is a key of projects or planner, or a Firestore serviceTickets id. timesheet.entity is a row uid inside budgets/<project>.
+- owner and other user fields hold Colada user ids. Names of people are personal data.
+- account and client hold account ids. Account names are personal data (accounts, accountInfos).
+
+Totals
+- Never add numbers yourself. Use groupBy and sum: rtdb_get path "timesheet", groupBy ["owner", "date:month"], sum ["hours", "minutes"]. Time of a group = hours * 60 + minutes minutes.
+- Date buckets: field:day, field:week (ISO week, 2026-W05), field:month, field:year.
+- Budgets: use campaigns_budget (kind projects or planner). Reserve fees, options, discount, VAT and exchange rates follow the app rules; summing budget rows gives wrong totals. storedTotal is the total the app saved last time.
+- Users with only "own timesheet" access get only their own rows; orderBy and limits are then set by the MCP.
+
+Hidden data and limits
+- Personal fields (for example timesheet description, project owner and contacts) are removed while personal data is off; removedFields lists their names. Secrets are never returned. A removed field cannot be used in where, fields, groupBy or sum.
+- orderBy, equalTo, startAt, endAt, limitToFirst and limitToLast run in Firebase and need an index ($key always works). They work on a node, not on one record of timesheet, tasks, activities or history. where, fields, groupBy and sum run in the MCP after the download.
+- A download over 10 MB is refused: narrow it with an indexed orderBy and equalTo, or with limits. A result over 500 KB is refused: use fields, where or groupBy.
 
 ## Errors from this MCP
 

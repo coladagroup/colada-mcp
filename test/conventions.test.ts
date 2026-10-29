@@ -20,6 +20,16 @@ describe('server instructions and conventions', () => {
     expect(h.client.getInstructions()).toContain('get_conventions before the first api_write')
   })
 
+  it('phase 4: instructions and conventions point the model to the Firebase tools', async () => {
+    const h = await setup()
+    expect(h.client.getInstructions()).toContain('use rtdb_get, firestore_get and campaigns_budget (read only)')
+    const tool = await h.client.callTool({ name: 'get_conventions', arguments: {} })
+    const text = JSON.stringify(tool.content)
+    expect(text).toContain('## Campaigns data')
+    expect(text).toContain('groupBy [\\"owner\\", \\"date:month\\"]')
+    expect(text).toContain('Index: owner, project')
+  })
+
   it('get_conventions returns the same text as the resource without a backend call', async () => {
     const h = await setup()
     const tool = await h.client.callTool({ name: 'get_conventions', arguments: {} })

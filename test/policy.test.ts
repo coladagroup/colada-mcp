@@ -64,6 +64,7 @@ const SECRET_CASES: Case[] = [
   ['S13', 's-workspaces', 'GET', '/api/workspaces/w1/smtp-with-creds'],
   ['S14', 's-workspaces', 'PUT', '/api/admin/workspaces/w1/stripe'],
   ['S15', 's-licenses', 'PUT', '/api/stripe/checkout/s1/expired'],
+  ['S16', 's-access', 'GET', '/api/auth/integrations/campaigns/firebase/config'],
   ['S17', 's-events', 'GET', '/api/events/e1/financialsettings/onlinepayments'],
   ['S18', 's-events', 'PUT', '/api/events/e1/financialsettings']
 ]
