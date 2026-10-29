@@ -2,7 +2,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import type { CallState } from '../api/backend.js'
 import type { App, RealmContext } from '../app.js'
-import type { ApiCall } from '../callLog.js'
+import type { ApiCall, FirebaseCall } from '../callLog.js'
 import { ToolError } from '../errors.js'
 import type { ResolvedWorkspace } from '../workspaces.js'
 
@@ -61,6 +61,21 @@ export function runApiTool(
   })
 }
 
+export interface FirebaseToolContext extends ToolContext {
+  call: FirebaseCall
+}
+
+export function runFirebaseTool(
+  app: App,
+  tool: string,
+  realm: string | undefined,
+  call: FirebaseCall,
+  handler: Handler<FirebaseToolContext>
+): Promise<CallToolResult> {
+  const ctx: FirebaseToolContext = { realm: realm || null, state: { httpStatus: null }, workspace: null, call }
+  return execute(app, tool, ctx, handler, () => ctx.call)
+}
+
 export function apiCallOf(input: {
   method: string
   service: string
@@ -82,7 +97,7 @@ async function execute<C extends ToolContext>(
   tool: string,
   ctx: C,
   handler: Handler<C>,
-  logFields: () => { params: unknown } | ApiCall
+  logFields: () => { params: unknown } | ApiCall | FirebaseCall
 ): Promise<CallToolResult> {
   let result: Record<string, unknown> = {}
   let error: string | null = null

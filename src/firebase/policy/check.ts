@@ -17,7 +17,14 @@ export interface AccessContext {
 }
 
 const MAX_PATH_BYTES = 768
-const FORBIDDEN_CHARACTERS = /[?#[\]$%\\\u0000-\u001f\u007f]/
+const FORBIDDEN_CHARACTERS = /[?#[\]$%\\]/
+
+function hasControlCharacter(segment: string): boolean {
+  return [...segment].some((character) => {
+    const code = character.charCodeAt(0)
+    return code < 0x20 || code === 0x7f
+  })
+}
 
 export function splitPath(path: string): string[] {
   const refuse = (reason: string) => new ToolError(messages.firebasePath(path, reason))
@@ -27,7 +34,8 @@ export function splitPath(path: string): string[] {
   for (const segment of segments) {
     if (segment === '') throw refuse('it has an empty segment (leading, trailing or double "/")')
     if (segment === '.' || segment === '..') throw refuse('"." and ".." are not allowed')
-    if (FORBIDDEN_CHARACTERS.test(segment)) throw refuse('it has one of ? # [ ] $ % \\ or a control character')
+    if (FORBIDDEN_CHARACTERS.test(segment) || hasControlCharacter(segment))
+      throw refuse('it has one of ? # [ ] $ % \\ or a control character')
   }
   return segments
 }

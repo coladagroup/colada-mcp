@@ -4,6 +4,7 @@ import type { App } from './app.js'
 import { CONVENTIONS, CONVENTIONS_URI, INSTRUCTIONS } from './conventions.js'
 import { registerApiGet } from './tools/apiGet.js'
 import { registerApiWrite } from './tools/apiWrite.js'
+import { registerFirestoreGet, registerRtdbGet } from './tools/firebaseTools.js'
 import { registerGetApiDoc } from './tools/getApiDoc.js'
 import { registerGetConventions } from './tools/getConventions.js'
 import { registerListWorkspaces } from './tools/listWorkspaces.js'
@@ -24,6 +25,8 @@ export function createServer(app: App): McpServer {
   registerGetApiDoc(server, app)
   registerApiGet(server, app)
   registerApiWrite(server, app)
+  registerRtdbGet(server, app)
+  registerFirestoreGet(server, app)
   registerLogout(server, app)
   return server
 }

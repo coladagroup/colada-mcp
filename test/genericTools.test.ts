@@ -48,6 +48,8 @@ describe('tools/list (AC24, AC32)', () => {
       'get_api_doc',
       'api_get',
       'api_write',
+      'rtdb_get',
+      'firestore_get',
       'logout'
     ])
     const annotations = Object.fromEntries(tools.map((tool) => [tool.name, tool.annotations]))

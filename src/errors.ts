@@ -95,6 +95,17 @@ export const messages = {
     `You lack ${permissions.length === 1 ? permissions[0] : `one of ${permissions.join(', ')}`} in workspace ${workspace}, so ${node} cannot be read.`,
   firebaseHiddenField: (field: string, option: string) =>
     `"${field}" is personal data and is hidden, so it cannot be used in ${option}. COLADA_ALLOW_PERSONAL_DATA=true shows it.`,
+  firebaseQuery: (reason: string) => `The query options are not valid: ${reason}.`,
+  firebaseNoIndex: (child: string, node: string, indexes: string) =>
+    `RTDB has no index on "${child}" for ${node}. Use an indexed child (${indexes}) or "where" (filters after a full download).`,
+  firebaseResultTooLarge: () =>
+    'The result is larger than 500 KB and is not returned. Use "fields", "where", "groupBy" or a narrower path.',
+  firebaseNotRecords: (option: string, path: string) =>
+    `"${option}" works on a list of records, but ${path} is one record.`,
+  firebaseOwnRowsOnly: () =>
+    'With only "own timesheet" access the MCP filters by your rows; orderBy, equalTo, startAt, endAt, limits and shallow cannot be set.',
+  firebaseNoShallow: (node: string) =>
+    `shallow is not available for ${node}: its records are filtered by project. Use "fields" to get small records.`,
   firebaseSecretField: (field: string, option: string) =>
     `"${field}" is a secret and is never returned, so it cannot be used in ${option}.`
 }
