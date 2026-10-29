@@ -1,19 +1,11 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { callBackend } from '../api/backend.js'
+import { CATALOG_PATH, DOC_NAME, DOCS_SERVICE, type ServiceDocs } from '../api/docMarkers.js'
 import type { App } from '../app.js'
 import { messages, ResponseTooLargeError, ToolError } from '../errors.js'
 import { checkService, MAX_RESPONSE_BYTES } from '../policy/index.js'
 import { openRealm, realmShape, runApiTool } from './run.js'
-
-const DOCS_SERVICE = 's-ecosystem'
-const CATALOG_PATH = '/api/api-docs'
-const DOC_NAME = /^(?!\.{1,2}$)[A-Za-z0-9._-]+$/
-
-interface ServiceDocs {
-  service: string
-  docs: Array<{ name: string; path: string; description?: string }>
-}
 
 export function registerGetApiDoc(server: McpServer, app: App) {
   server.registerTool(

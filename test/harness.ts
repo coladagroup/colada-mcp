@@ -59,6 +59,8 @@ export function json(status: number, body: unknown, headers: Record<string, stri
   })
 }
 
+export const DOCS_PATH = '/_gw/s-ecosystem/api/api-docs'
+
 export class FakeWorld {
   now = 1_800_000_000
   tokenTtl = 300
@@ -92,6 +94,18 @@ export class FakeWorld {
 
   backendRequests(host?: string) {
     return this.requests.filter((r) => r.url.pathname.startsWith('/_gw/') && (!host || r.url.host === host))
+  }
+
+  toolRequests(host?: string) {
+    return this.backendRequests(host).filter((r) => !r.url.pathname.startsWith(DOCS_PATH))
+  }
+
+  docRequests(host?: string) {
+    return this.backendRequests(host).filter((r) => r.url.pathname.startsWith(DOCS_PATH))
+  }
+
+  workspaceTokenRequests(host?: string) {
+    return this.tokenRequests(host).filter((r) => r.form?.get('workspace_id'))
   }
 
   private issue(value: string) {

@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { App } from '../app.js'
 import { checkWrite } from '../policy/index.js'
-import { sendApiCall } from './apiCall.js'
+import { checkWithMarkers, sendApiCall } from './apiCall.js'
 import { apiCallOf, realmShape, runApiTool, workspaceInput } from './run.js'
 
 export function registerApiWrite(server: McpServer, app: App) {
@@ -30,7 +30,9 @@ export function registerApiWrite(server: McpServer, app: App) {
     },
     (params) =>
       runApiTool(app, 'api_write', params.realm, apiCallOf(params), async (ctx) => {
-        const checked = checkWrite(params.method, params, app.deps.allowPersonalData)
+        const checked = await checkWithMarkers(app, ctx, params, (allow, markers) =>
+          checkWrite(params.method, params, allow, markers)
+        )
         return sendApiCall(app, ctx, params, checked)
       })
   )
