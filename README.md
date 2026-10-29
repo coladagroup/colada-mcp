@@ -107,6 +107,8 @@ Services that hold personal data (guests, contacts, users, speakers, invoices, p
 
 Only the exact value `true` turns it on. Turn it on only when the task needs personal data, and turn it off again afterwards.
 
+While it is off, each call is checked against the `x-personal-data: true|false` marker in the service's api-doc (`get_api_doc`). The marker can sit on the document (`info`), on a path or on an operation; the most specific one wins. `true` refuses the call, `false` allows it, also on a service from the built-in list. With no marker, no matching operation, or no doc loaded, the built-in list decides. The MCP loads a service's docs on the first call to it, at most once per hour per host, and keeps the last good markers when a reload fails. Markers never open secret routes or deletes that the MCP blocks.
+
 ## Campaigns (Firebase)
 
 Campaigns data is not in the backoffice API but in Firebase. The Firebase tools only read; they never write and never call Cloud Functions.
