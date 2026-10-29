@@ -72,11 +72,14 @@ function sender(
   ctx: FirebaseToolContext
 ): Reader['send'] {
   return async (request, store, path) => {
-    let response = await request(await access())
+    const used = await access()
+    let response = await request(used)
     ctx.state.httpStatus = response.status
     if (response.status === 401) {
       firebase.drop(workspace, appName)
-      response = await request(await access())
+      const fresh = await access()
+      if (!sameAccess(used, fresh)) throw new ToolError(messages.firebaseAccessChanged())
+      response = await request(fresh)
       ctx.state.httpStatus = response.status
     }
     if (response.status === 401 || response.status === 403) throw new ToolError(messages.firebaseRefused(path))
@@ -89,6 +92,11 @@ function sender(
     }
     return response
   }
+}
+
+function sameAccess(a: FirebaseAccess, b: FirebaseAccess): boolean {
+  const sorted = (values: Iterable<string>) => JSON.stringify([...values].sort())
+  return a.uid === b.uid && sorted(a.roles) === sorted(b.roles) && sorted(a.permissions) === sorted(b.permissions)
 }
 
 function upstreamText(response: FirebaseResponse): string | null {

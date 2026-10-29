@@ -108,6 +108,8 @@ export const messages = {
     `shallow is not available for ${node}: its records are filtered by project. Use "fields" to get small records.`,
   firebaseHiddenSetTooLarge: (kind: string, node: string) =>
     `${kind} of this workspace is larger than 10 MB. The MCP reads it to hide projects you may not see, so ${node} cannot be read.`,
+  firebaseAccessChanged: () =>
+    'Your Campaigns access changed while this call was running. Nothing was returned; call the tool again.',
   firebaseSecretField: (field: string, option: string) =>
     `"${field}" is a secret and is never returned, so it cannot be used in ${option}.`
 }

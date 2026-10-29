@@ -761,3 +761,27 @@ describe('PR #13 code review findings', () => {
     expect(world.requests.slice(before).map((r) => r.url.pathname)).toEqual([])
   })
 })
+
+describe('second opinion (REVIEW-diff-phase4.md)', () => {
+  it('1: a re-mint after a 401 with changed access stops the call; the next call uses the new access', async () => {
+    const { h, fw } = await setup()
+    fw.permissions.push('campaigns_app/projects/budget:view')
+    expect((await rtdb(h, { path: 'budgets/p1' })).isError).toBe(false)
+    fw.permissions = ['campaigns_app:view', 'campaigns_app/reports:view']
+    fw.rtdbStatus.push(401)
+    const changed = await rtdb(h, { path: 'budgets/p1' })
+    expect(changed.body.error).toBe(
+      'Your Campaigns access changed while this call was running. Nothing was returned; call the tool again.'
+    )
+    expect(changed.text).not.toContain('Room')
+    expect((await rtdb(h, { path: 'budgets/p1' })).body.error).toBe(
+      `You lack campaigns_app/projects/budget:view in workspace ${WS_A}, so budgets cannot be read.`
+    )
+  })
+
+  it('1: a re-mint after a 401 with the same access just retries', async () => {
+    const { h, fw } = await setup()
+    fw.rtdbStatus.push(401)
+    expect((await rtdb(h, { path: 'tags' })).isError).toBe(false)
+  })
+})
