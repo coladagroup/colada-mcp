@@ -570,3 +570,81 @@ describe('campaigns_budget (F8, AC-F21)', () => {
     expect(JSON.stringify(h.logs)).not.toContain('Hall')
   })
 })
+
+describe('Stage 6 review findings (STAGE6-REVIEW-phase4.md)', () => {
+  async function reviewSetup(options: { allowPersonalData?: boolean } = {}) {
+    const result = await setup(options)
+    result.fw.permissions.push('campaigns_app/tasks:view', 'campaigns_app/offers:view', 'campaigns_app/leads:view')
+    const ws = result.fw.rtdb[WS_A] as Record<string, Record<string, unknown>>
+    ws.tasks = { k1: { name: 'Secret task', createdAt: 1, source: 'p2' } }
+    ws.deals = { d1: { contact: { email: 'alice@example.com' }, chance: 50 } }
+    result.fw.firestore[WS_A] = { snapshots: { n2: { name: 'Hidden snap', project: 'p2', total: 5 } } }
+    return result
+  }
+
+  it('A: query options on a one-record read of a field-linked node cannot drop the link field', async () => {
+    const { h } = await reviewSetup()
+    for (const args of [
+      { path: 'timesheet/t3', orderBy: '$key', endAt: 'hours' },
+      { path: 'tasks/k1', orderBy: '$key', endAt: 'name' },
+      { path: 'tasks/k1', orderBy: '$key', limitToFirst: 1 }
+    ]) {
+      const result = await rtdb(h, args)
+      expect(result.isError, JSON.stringify(args)).toBe(true)
+      expect(result.text).not.toContain('Secret task')
+      expect(result.text).not.toContain('"hours":3')
+    }
+  })
+
+  it('B: a Firestore fields mask cannot drop the snapshots project link', async () => {
+    const { h } = await reviewSetup()
+    expect((await firestore(h, { path: 'snapshots/n2', fields: ['name', 'total'] })).body.error).toBe(
+      'Nothing found at firestore snapshots/n2.'
+    )
+    const list = await firestore(h, { path: 'snapshots', fields: ['name'] })
+    expect(list.body.documents).toEqual([])
+    expect(list.body.removedRecords).toBe(1)
+  })
+
+  it('B: link fields added to the mask are not returned when they were not asked for', async () => {
+    const { h, fw } = await reviewSetup()
+    ;(fw.firestore[WS_A] as Record<string, Record<string, unknown>>).snapshots = {
+      n1: { name: 'Offer v1', project: 'p1' }
+    }
+    const result = await firestore(h, { path: 'snapshots/n1', fields: ['name'] })
+    expect(result.body.data).toEqual({ name: 'Offer v1' })
+  })
+
+  it('C: campaigns_budget refuses an id with more than one segment', async () => {
+    const { h } = await reviewSetup()
+    for (const id of ['p2/snapshots/s1', 'p2/list/0', 'p1/']) {
+      const result = await h.call('campaigns_budget', { workspace: WS_A, kind: 'projects', id })
+      expect(result.body.error, id).toMatch(/is not allowed/)
+    }
+  })
+
+  it('D: orderBy on a removed field is refused while personal data is off', async () => {
+    const { h, world } = await reviewSetup()
+    expect((await rtdb(h, { path: 'projects', orderBy: 'owner', equalTo: 'boss' })).body.error).toBe(
+      '"owner" is personal data and is hidden, so it cannot be used in orderBy. COLADA_ALLOW_PERSONAL_DATA=true shows it.'
+    )
+    expect(rtdbRequests(world)).toHaveLength(0)
+    expect((await rtdb(h, { path: 'timesheet', orderBy: 'owner', equalTo: ME })).isError).toBe(false)
+  })
+
+  it('D: with personal data on, orderBy owner works on projects', async () => {
+    const { h } = await reviewSetup({ allowPersonalData: true })
+    expect((await rtdb(h, { path: 'projects', orderBy: 'owner', equalTo: 'boss' })).isError).toBe(false)
+  })
+
+  it('E: a read that starts below a removed field returns nothing', async () => {
+    const { h } = await reviewSetup()
+    const result = await rtdb(h, { path: 'deals/d1/contact/email' })
+    expect(result.text).not.toContain('alice@example.com')
+    expect(result.body.data).toBeNull()
+    expect(result.body.removedFields).toEqual(['contact'])
+    const deputy = await rtdb(h, { path: 'projects/p1/deputies/0' })
+    expect(deputy.text).not.toContain(ME)
+    expect(deputy.body.removedFields).toEqual(['deputies'])
+  })
+})

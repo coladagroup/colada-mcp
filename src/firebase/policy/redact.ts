@@ -53,10 +53,12 @@ export function redact(
     removed.add(hit.text)
     return null
   }
-  const top = matching(patterns, basePath)
-  if (top && basePath.length > 0) {
-    removed.add(top.text)
-    return { value: null, removed }
+  for (let length = 1; length <= basePath.length; length++) {
+    const hit = matching(patterns, basePath.slice(0, length))
+    if (hit) {
+      removed.add(hit.text)
+      return { value: null, removed }
+    }
   }
   return { value: walk(value, [...basePath]), removed }
 }

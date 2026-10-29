@@ -81,7 +81,7 @@ Guests (s-events-guests, personal data)
 Campaigns keeps its data in Firebase. rtdb_get reads the Realtime Database, firestore_get reads Firestore, campaigns_budget computes a budget. All three only read. Paths are relative to the workspace: "timesheet", not "workspaces/<id>/timesheet". You see what the Campaigns app shows you: each node needs its Campaigns permission, and projects you may not see (private projects, lobby roles) are left out everywhere. removedRecords counts the records left out.
 
 Realtime Database nodes (rtdb_get)
-- projects/<id>: projects (name, number, status, currency, total, allocated, account, startDate, endDate, archived, isPrivate). Index: account, owner, archived, guestsEventId.
+- projects/<id>: projects (name, number, status, currency, total, allocated, account, startDate, endDate, archived, isPrivate). Index: account, archived, guestsEventId, and owner (owner is personal data on projects, so it works only with personal data on).
 - planner/<id>: offers. budgets/<projectId> and plannerBudgets/<offerId>: the budget tree of a project or offer (rows with content and subRows).
 - timesheet/<id>: booked time (owner, date YYYY-MM-DD, hours, minutes, project, entity, tag, account). Index: owner, project. There is no index on date: filter dates with where.
 - tags, units, costCenters, currencies, pdfTemplates, checklists, knowledgeBase, projectCounter: reference data.
@@ -104,7 +104,7 @@ Totals
 
 Hidden data and limits
 - Personal fields (for example timesheet description, project owner and contacts) are removed while personal data is off; removedFields lists their names. Secrets are never returned. A removed field cannot be used in where, fields, groupBy or sum.
-- orderBy, equalTo, startAt, endAt, limitToFirst and limitToLast run in Firebase and need an index ($key always works). where, fields, groupBy and sum run in the MCP after the download.
+- orderBy, equalTo, startAt, endAt, limitToFirst and limitToLast run in Firebase and need an index ($key always works). They work on a node, not on one record of timesheet, tasks, activities or history. where, fields, groupBy and sum run in the MCP after the download.
 - A download over 10 MB is refused: narrow it with an indexed orderBy and equalTo, or with limits. A result over 500 KB is refused: use fields, where or groupBy.
 
 ## Errors from this MCP

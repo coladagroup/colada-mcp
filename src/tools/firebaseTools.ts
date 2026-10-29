@@ -34,7 +34,7 @@ export function registerRtdbGet(server: McpServer, app: App) {
     'rtdb_get',
     {
       description:
-        'Reads one node of the Campaigns Realtime Database in one workspace, with your own Campaigns permissions. Personal data and secrets are removed (removedFields lists their names). orderBy / equalTo / startAt / endAt / limitToFirst / limitToLast run in Firebase and need an index ($key always works; timesheet: owner, project; projects: account, owner, archived, guestsEventId). where / fields / groupBy / sum run in the MCP after the download; use groupBy + sum for totals instead of adding numbers yourself. Downloads over 10 MB and results over 500 KB are refused.',
+        'Reads one node of the Campaigns Realtime Database in one workspace, with your own Campaigns permissions. Personal data and secrets are removed (removedFields lists their names). orderBy / equalTo / startAt / endAt / limitToFirst / limitToLast run in Firebase and need an index ($key always works; timesheet: owner, project; projects: account, archived, guestsEventId). where / fields / groupBy / sum run in the MCP after the download; use groupBy + sum for totals instead of adding numbers yourself. Downloads over 10 MB and results over 500 KB are refused.',
       inputSchema: {
         ...realmShape(app),
         workspace: workspaceInput,

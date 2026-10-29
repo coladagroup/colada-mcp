@@ -15,7 +15,7 @@ import {
 import { firestoreFieldPath, fromFirestoreFields } from './firestoreValues.js'
 import type { FirebaseResponse } from './http.js'
 import { applyLocalOps, fieldsUsed, hasLocalOps, type LocalOps } from './localOps.js'
-import { type CheckedPath, checkFirebasePath } from './policy/check.js'
+import { type CheckedPath, checkFirebasePath, splitPath } from './policy/check.js'
 import { assertUsable, redact } from './policy/redact.js'
 import { applyRowRules, campaignsRole, hiddenProjectIds } from './policy/rows.js'
 import type { NodeRule, ProjectKind, Store } from './policy/tables.js'
@@ -183,9 +183,16 @@ export async function readRtdb(app: App, ctx: FirebaseToolContext, input: RtdbIn
     limitToLast: input.limitToLast
   }
   if (input.shallow && rule.link?.by === 'field') throw new ToolError(messages.firebaseNoShallow(rule.node))
+  const hasQuery = Object.values(query).some((value) => value !== undefined && value !== false)
+  if ((rule.link?.by === 'field' || rule.ownRows) && rest.length === 1 && hasQuery) {
+    throw new ToolError(messages.firebaseQuery(`orderBy, filters and limits work on ${rule.node}, not on one record`))
+  }
+  if (input.orderBy !== undefined && input.orderBy !== '$key' && input.orderBy !== '$value') {
+    assertUsable(input.orderBy, 'orderBy', rule, allowPersonalData)
+  }
   let queryString: string
   if (checked.timesheetMode === 'own' && rest.length === 0) {
-    if (Object.values(query).some((value) => value !== undefined && value !== false)) {
+    if (hasQuery) {
       throw new ToolError(messages.firebaseOwnRowsOnly())
     }
     queryString = rtdbQueryString({ orderBy: 'owner', equalTo: access.uid })
@@ -255,7 +262,10 @@ export async function readFirestore(app: App, ctx: FirebaseToolContext, input: F
   const params = new URLSearchParams()
   if (!document) params.set('pageSize', String(input.pageSize ?? DEFAULT_PAGE_SIZE))
   if (!document && input.pageToken) params.set('pageToken', input.pageToken)
-  for (const field of input.fields ?? []) params.append('mask.fieldPaths', firestoreFieldPath(field))
+  const linkFields = rule.link?.by === 'field' ? rule.link.fields : []
+  const addedLinks = input.fields ? linkFields.filter((field) => !input.fields?.includes(field)) : []
+  for (const field of [...(input.fields ?? []), ...addedLinks])
+    params.append('mask.fieldPaths', firestoreFieldPath(field))
   const hidden = await hiddenProjects(app, reader, rule)
   const path = ['workspaces', reader.workspace, ...checked.segments].map(encodeURIComponent).join('/')
   const response = await reader.send(
@@ -279,7 +289,9 @@ export async function readFirestore(app: App, ctx: FirebaseToolContext, input: F
   }
   const removed = new Set<string>()
   const clean = (id: string, fields: unknown) => {
-    const result = redact(fromFirestoreFields(fields), [id], rule, allowPersonalData)
+    const data = fromFirestoreFields(fields)
+    for (const field of addedLinks) delete data[field]
+    const result = redact(data, [id], rule, allowPersonalData)
     for (const name of result.removed) removed.add(name)
     return result.value
   }
@@ -333,6 +345,9 @@ export async function readBudget(app: App, ctx: FirebaseToolContext, input: Budg
   const access = await reader.access()
   const allowPersonalData = app.deps.allowPersonalData
   const context = { permissions: access.permissions, allowPersonalData, workspace: reader.workspace }
+  if (splitPath(input.id).length !== 1) {
+    throw new ToolError(messages.firebasePath(input.id, 'the id must be one path segment'))
+  }
   const shown = `${input.kind}/${input.id}`
   const budget = checkFirebasePath('rtdb', `${BUDGET_NODE[input.kind]}/${input.id}`, context)
   const meta = checkFirebasePath('rtdb', shown, context)
