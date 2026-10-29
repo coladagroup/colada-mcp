@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { App } from '../app.js'
 import type { FirebaseCall } from '../callLog.js'
-import { readFirestore, readRtdb } from '../firebase/read.js'
+import { readBudget, readFirestore, readRtdb } from '../firebase/read.js'
 import { realmShape, runFirebaseTool, workspaceInput } from './run.js'
 
 const appInput = z.enum(['campaigns']).describe('Firebase app. Only "campaigns" today.')
@@ -97,6 +97,32 @@ export function registerFirestoreGet(server: McpServer, app: App) {
         query: loggedQuery(params)
       }
       return runFirebaseTool(app, 'firestore_get', params.realm, call, (ctx) => readFirestore(app, ctx, params))
+    }
+  )
+}
+
+export function registerCampaignsBudget(server: McpServer, app: App) {
+  server.registerTool(
+    'campaigns_budget',
+    {
+      description:
+        'Budget of one Campaigns project or offer, computed with the same rules as the Campaigns app: reserve fees (linear and non-linear), options, discount, VAT, quantities and exchange rates. Returns total, total with options, allocated, actual (booked time x price + invoices), the stored total of the project, and one flat row per budget line. Use it instead of adding budget rows yourself.',
+      inputSchema: {
+        ...realmShape(app),
+        workspace: workspaceInput,
+        kind: z.enum(['projects', 'planner']).describe('"projects" for a project, "planner" for an offer.'),
+        id: z
+          .string()
+          .min(1)
+          .max(200)
+          .describe('Project or offer id, for example a key from rtdb_get path "projects".'),
+        rows: z.boolean().optional().describe('false returns the totals only. Default true.')
+      },
+      annotations: { readOnlyHint: true }
+    },
+    (params) => {
+      const call: FirebaseCall = { app: 'campaigns', store: 'rtdb', path: `${params.kind}/${params.id}`, query: {} }
+      return runFirebaseTool(app, 'campaigns_budget', params.realm, call, (ctx) => readBudget(app, ctx, params))
     }
   )
 }

@@ -3,6 +3,15 @@ import { messages, ToolError } from '../errors.js'
 import { MAX_RESPONSE_BYTES } from '../policy/index.js'
 import type { FirebaseToolContext } from '../tools/run.js'
 import { openRealm } from '../tools/run.js'
+import {
+  CHF_CURRENCY,
+  calculateAllocated,
+  calculateReportsTotal,
+  calculateTotal,
+  type ExchangeRates,
+  flattenBudget,
+  parseBudgetData
+} from './campaigns/budgetMath.js'
 import { firestoreFieldPath, fromFirestoreFields } from './firestoreValues.js'
 import type { FirebaseResponse } from './http.js'
 import { applyLocalOps, fieldsUsed, hasLocalOps, type LocalOps } from './localOps.js'
@@ -301,5 +310,66 @@ export async function readFirestore(app: App, ctx: FirebaseToolContext, input: F
     { ...base, documents, ...(body.nextPageToken ? { nextPageToken: body.nextPageToken } : {}) },
     removed,
     kept.removedRecords
+  )
+}
+
+export interface BudgetInput {
+  realm?: string
+  workspace?: string
+  kind: ProjectKind
+  id: string
+  rows?: boolean
+}
+
+const BUDGET_NODE: Record<ProjectKind, string> = { projects: 'budgets', planner: 'plannerBudgets' }
+
+function exchangeRatesOf(value: unknown): ExchangeRates {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, number>
+}
+
+export async function readBudget(app: App, ctx: FirebaseToolContext, input: BudgetInput) {
+  const reader = await openReader(app, ctx, { ...input, app: 'campaigns', path: `${input.kind}/${input.id}` })
+  const access = await reader.access()
+  const allowPersonalData = app.deps.allowPersonalData
+  const context = { permissions: access.permissions, allowPersonalData, workspace: reader.workspace }
+  const shown = `${input.kind}/${input.id}`
+  const budget = checkFirebasePath('rtdb', `${BUDGET_NODE[input.kind]}/${input.id}`, context)
+  const meta = checkFirebasePath('rtdb', shown, context)
+  const hidden = await hiddenProjects(app, reader, meta.rule)
+  if (hidden.has(input.id)) throw new ToolError(messages.firebaseNotFound('rtdb', shown))
+  const read = async (checked: CheckedPath) =>
+    (
+      await reader.send(
+        rtdbRequest(app, reader, checked.segments, '', checked.rule.node, checked.segments.join('/')),
+        'rtdb',
+        checked.segments.join('/')
+      )
+    ).body
+  const [project, stored] = await Promise.all([read(meta), read(budget)])
+  if (project === null || typeof project !== 'object') throw new ToolError(messages.firebaseNotFound('rtdb', shown))
+  const p = project as Record<string, unknown>
+  let list = parseBudgetData(stored)
+  if (list.length === 0 && p.list != null) list = parseBudgetData(p.list)
+  const currency = typeof p.currency === 'string' ? p.currency : CHF_CURRENCY
+  const rates = exchangeRatesOf(p.exchangeRates)
+  return finish(
+    {
+      app: 'campaigns',
+      kind: input.kind,
+      id: input.id,
+      name: p.name ?? null,
+      number: p.number ?? null,
+      currency,
+      total: calculateTotal(list, false, currency, rates),
+      totalWithOptions: calculateTotal(list, true, currency, rates),
+      allocated: calculateAllocated(list),
+      actual: calculateReportsTotal(list, rates),
+      storedTotal: p.total ?? null,
+      storedAllocated: p.allocated ?? null,
+      ...(input.rows === false ? {} : { rows: flattenBudget(list, currency, rates) })
+    },
+    new Set(),
+    0
   )
 }

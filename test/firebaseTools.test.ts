@@ -458,3 +458,115 @@ describe('call log, tokens and methods (AC-F3, AC-F13, AC-F22)', () => {
     for (const r of google.filter((r) => r.url.host !== IDENTITY_HOST)) expect(r.method).toBe('GET')
   })
 })
+
+describe('campaigns_budget (F8, AC-F21)', () => {
+  async function budgetSetup() {
+    const result = await setup()
+    result.fw.permissions.push('campaigns_app/projects/budget:view', 'campaigns_app/offers:view')
+    const ws = result.fw.rtdb[WS_A] as Record<string, Record<string, unknown>>
+    ws.budgets = {
+      ...ws.budgets,
+      p1: [
+        {
+          uid: 'g',
+          name: 'Hall',
+          content: { price: 0 },
+          subRows: [
+            {
+              uid: 'r1',
+              name: 'Room',
+              content: {
+                price: 100,
+                selectedQuantity: 2,
+                allocated: 150,
+                reports: { '2026-09-01': [{ hours: 1, minutes: 30, description: 'met John', owner: ME }] },
+                invoices: [{ amount: 40, supplier: 'Bob', notes: 'n', title: 't' }]
+              }
+            },
+            { uid: 'f', name: 'Fee', content: { price: 0, effort: 'reserve', feeMode: 'linear', selectedQuantity: 10 } }
+          ]
+        },
+        { uid: 'o', name: 'Extra', content: { price: 50, effort: 'option' } }
+      ]
+    }
+    ws.projects = {
+      ...ws.projects,
+      p1: { ...(ws.projects?.p1 as object), currency: 'CHF', exchangeRates: '', total: 210 }
+    }
+    ws.planner = {
+      o1: {
+        name: 'Offer',
+        number: 'O-1',
+        notes: 'call Anna',
+        list: [{ uid: 'x', name: 'Legacy', content: { price: 70 } }]
+      }
+    }
+    ws.plannerBudgets = {}
+    return result
+  }
+
+  it('returns totals and flat rows computed like the UI, without personal fields', async () => {
+    const { h } = await budgetSetup()
+    const result = await h.call('campaigns_budget', { workspace: WS_A, kind: 'projects', id: 'p1' })
+
+    expect(result.isError).toBe(false)
+    expect(result.body).toMatchObject({
+      kind: 'projects',
+      id: 'p1',
+      name: 'Fair',
+      number: '1',
+      currency: 'CHF',
+      total: 220,
+      totalWithOptions: 270,
+      allocated: 150,
+      actual: 190,
+      storedTotal: 210,
+      removedFields: []
+    })
+    const rows = result.body.rows as Array<Record<string, unknown>>
+    expect(rows.map((r) => [r.path, r.total])).toEqual([
+      ['Hall', 220],
+      ['Hall > Room', 200],
+      ['Hall > Fee', 0],
+      ['Extra', 0]
+    ])
+    expect(rows[2]?.reserveAmount).toBe(20)
+    expect(result.text).not.toMatch(/met John|Bob|call Anna/)
+  })
+
+  it('reads an offer from plannerBudgets and falls back to the legacy list', async () => {
+    const { h } = await budgetSetup()
+    const result = await h.call('campaigns_budget', { workspace: WS_A, kind: 'planner', id: 'o1', rows: false })
+    expect(result.body).toMatchObject({ kind: 'planner', name: 'Offer', total: 70 })
+    expect(result.body.rows).toBeUndefined()
+  })
+
+  it('a hidden project or a missing one is "not found"; missing permissions are named', async () => {
+    const { h } = await budgetSetup()
+    expect((await h.call('campaigns_budget', { workspace: WS_A, kind: 'projects', id: 'p2' })).body.error).toBe(
+      'Nothing found at rtdb projects/p2.'
+    )
+    expect((await h.call('campaigns_budget', { workspace: WS_A, kind: 'projects', id: 'nope' })).body.error).toBe(
+      'Nothing found at rtdb projects/nope.'
+    )
+    expect((await h.call('campaigns_budget', { workspace: WS_A, kind: 'projects', id: '../x' })).body.error).toMatch(
+      /is not allowed/
+    )
+  })
+
+  it('a missing budget permission is named before any RTDB read', async () => {
+    const { h, fw, world } = await budgetSetup()
+    fw.permissions = ['campaigns_app:view']
+    expect((await h.call('campaigns_budget', { workspace: WS_A, kind: 'projects', id: 'p1' })).body.error).toBe(
+      `You lack campaigns_app/projects/budget:view in workspace ${WS_A}, so budgets cannot be read.`
+    )
+    expect(rtdbRequests(world)).toHaveLength(0)
+  })
+
+  it('logs kind/id as the path and no body', async () => {
+    const { h } = await budgetSetup()
+    await h.call('campaigns_budget', { workspace: WS_A, kind: 'projects', id: 'p1' })
+    expect(h.logs.at(-1)).toMatchObject({ tool: 'campaigns_budget', store: 'rtdb', path: 'projects/p1', query: {} })
+    expect(JSON.stringify(h.logs)).not.toContain('Hall')
+  })
+})
