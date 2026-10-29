@@ -66,6 +66,7 @@ export const SECRET_ROUTES: readonly RouteRule[] = [
   { id: 'S13', service: 's-workspaces', method: 'GET', pattern: /^\/api\/workspaces\/[^/]+\/smtp-with-creds\/?$/ },
   { id: 'S14', service: 's-workspaces', method: 'PUT', pattern: /^\/api\/admin\/workspaces\/[^/]+\/stripe\/?$/ },
   { id: 'S15', service: 's-licenses', method: 'PUT', pattern: /^\/api\/stripe\/checkout\/[^/]+\/expired\/?$/ },
+  { id: 'S16', service: 's-access', method: 'GET', pattern: /^\/api\/auth\/integrations\/[^/]+\/firebase\/config\/?$/ },
   {
     id: 'S17',
     service: 's-events',

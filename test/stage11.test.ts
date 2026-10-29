@@ -32,6 +32,8 @@ describe('delete and secret routes stay blocked with the personal-data switch on
     ['POST', 's-events-invoices', '/api/guestsinvoices/remove/jobs'],
     ['POST', 's-events-invoices', `/api/events/${EVENT_A}/brokersinvoices/remove/jobs`],
     ['POST', 's-access', '/api/auth/integrations/games/firebase/token'],
+    ['GET', 's-access', '/api/auth/integrations/campaigns/firebase/config'],
+    ['GET', 's-access', '/api/auth/integrations/campaigns/firebase/config:(apiKey)'],
     ['PUT', 's-workspaces', '/api/workspaces/w1/smtp:(host)']
   ]
   for (const [method, service, path] of writes) {

@@ -11,6 +11,9 @@ Tools:
 | `get_api_doc` | Lists the backoffice services with API docs and a one-line description of each doc, or returns the OpenAPI YAML of one service. The descriptions come from the backend at run time (`s-ecosystem`); the package holds none. |
 | `api_get` | Sends one GET to a backoffice service (`s-*`) in one workspace. Returns the status, the JSON body and the headers `Content-Range`, `ETag`, `X-ETag`, `Location`. |
 | `api_write` | Sends one POST, PUT or PATCH with a JSON body. **It changes data.** |
+| `rtdb_get` | Reads one node of the Campaigns Realtime Database in one workspace. Optional `where`, `fields`, `groupBy` and `sum` run in the MCP, for exact totals. Read only. |
+| `firestore_get` | Reads one document or one page of a collection of the Campaigns Firestore. Read only. |
+| `campaigns_budget` | Computes the budget of one Campaigns project or offer with the app's rules (reserve fees, options, VAT, exchange rates). Read only. |
 | `logout` | Ends the stored session. |
 
 > **Breaking change in 0.3.0.** The typed read tools `list_events`, `get_event`, `list_email_templates`, `get_email_template` and `get_registration_form` are removed. Use `api_get` instead (read the service doc with `get_api_doc` first). The server is no longer read-only.
@@ -104,6 +107,14 @@ Services that hold personal data (guests, contacts, users, speakers, invoices, p
 
 Only the exact value `true` turns it on. Turn it on only when the task needs personal data, and turn it off again afterwards.
 
+## Campaigns (Firebase)
+
+Campaigns data is not in the backoffice API but in Firebase. The Firebase tools only read; they never write and never call Cloud Functions.
+
+- The server gets a Firebase token with your own Colada login for the workspace of the call. The token stays in memory and is not stored; Firebase access ends with your Colada session.
+- You see what the Campaigns app shows you: the MCP checks your Campaigns permissions per data node, keeps only your own timesheet rows when you have only "own timesheet" access, and leaves out projects you may not see.
+- Personal data (for example timesheet descriptions, people on projects, contacts, chats, accounts) is removed unless `COLADA_ALLOW_PERSONAL_DATA=true`. Secrets are never returned.
+
 ## Login
 
 The first tool call opens the Colada login in your browser. Log in, then ask Claude to retry. The session is kept in the OS keychain (service `colada-mcp`) and lasts about one working day, also after a restart.
@@ -114,7 +125,7 @@ To end the session, ask Claude to call `logout`. With several hosts and no realm
 
 ## Call log
 
-Every tool call writes one line to `~/.colada-mcp/calls.log`: time, realm, user, workspace, tool, HTTP status, and for `get_api_doc`, `api_get` and `api_write` also method, service, path, query and whether `If-Match` was sent. The log never holds tokens, request or response bodies, or header values. Query values are logged as given, so a filter on a person's email appears there.
+Every tool call writes one line to `~/.colada-mcp/calls.log`: time, realm, user, workspace, tool, HTTP status, and for `get_api_doc`, `api_get` and `api_write` also method, service, path, query and whether `If-Match` was sent. For the Firebase tools it holds app, store, path and the query options; `where` is logged without its values. The log never holds tokens, request or response bodies, or header values. Query values are logged as given, so a filter on a person's email appears there.
 
 ## Data and privacy
 

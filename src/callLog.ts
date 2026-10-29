@@ -10,6 +10,13 @@ export interface ApiCall {
   ifMatch: boolean
 }
 
+export interface FirebaseCall {
+  app: string
+  store: 'rtdb' | 'firestore'
+  path: string
+  query: Record<string, unknown>
+}
+
 interface CallLogBase {
   time: string
   realm: string | null
@@ -19,7 +26,7 @@ interface CallLogBase {
   httpStatus: number | null
 }
 
-export type CallLogEntry = CallLogBase & ({ params: unknown } | ApiCall)
+export type CallLogEntry = CallLogBase & ({ params: unknown } | ApiCall | FirebaseCall)
 
 export type CallLog = (entry: CallLogEntry) => Promise<void>
 
