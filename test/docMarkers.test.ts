@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createHarness,
   DOCS_PATH,
@@ -220,7 +220,29 @@ describe('cache (D58, AC42)', () => {
     expect(docPaths(h)).toEqual([DOCS_PATH, GUESTS_DOC])
     h.world.now += 1
     await getGuests(h)
+    await vi.waitFor(() => expect(docPaths(h)).toEqual([DOCS_PATH, GUESTS_DOC, DOCS_PATH, GUESTS_DOC]))
+  })
+
+  it('after an hour the call uses the old markers and the reload runs in the background', async () => {
+    const h = await setup()
+    expect((await getGuests(h)).isError).toBe(false)
+    h.world.now += HOUR
+    h.world.backendRaw.set(GUESTS_DOC, yaml(GUESTS_FALSE.replace('false', 'true')))
+    expect((await getGuests(h)).isError).toBe(false)
+    await vi.waitFor(() => expect(markerLines(h)).toHaveLength(2))
+    expect((await getGuests(h)).body.error).toContain('may return personal data')
     expect(docPaths(h)).toEqual([DOCS_PATH, GUESTS_DOC, DOCS_PATH, GUESTS_DOC])
+  })
+
+  it('a background reload that cannot get a token keeps the old markers', async () => {
+    const h = await setup()
+    expect((await getGuests(h)).isError).toBe(false)
+    h.world.now += HOUR
+    h.world.realms.get(STAGE_HOST)?.validRefreshTokens.clear()
+    await getGuests(h)
+    await vi.waitFor(() => expect(h.opened).toHaveLength(1))
+    expect(docPaths(h)).toEqual([DOCS_PATH, GUESTS_DOC])
+    expect(markerLines(h)).toHaveLength(1)
   })
 
   it('the catalog is shared by the services of one host', async () => {
@@ -236,10 +258,13 @@ describe('cache (D58, AC42)', () => {
     h.world.now += HOUR
     h.world.backendStatus.set(GUESTS_DOC, 502)
     expect((await getGuests(h)).isError).toBe(false)
-    expect(markerLines(h)).toEqual([
-      'colada-mcp: markers s-events-guests: ok 1 operations',
-      'colada-mcp: markers s-events-guests: failed http 502'
-    ])
+    await vi.waitFor(() =>
+      expect(markerLines(h)).toEqual([
+        'colada-mcp: markers s-events-guests: ok 1 operations',
+        'colada-mcp: markers s-events-guests: failed http 502'
+      ])
+    )
+    expect((await getGuests(h)).isError).toBe(false)
   })
 
   it('a failed catalog refresh keeps the last good catalog', async () => {
@@ -248,8 +273,10 @@ describe('cache (D58, AC42)', () => {
     h.world.now += HOUR
     h.world.backendStatus.set(DOCS_PATH, 503)
     h.world.backendRaw.set(GUESTS_DOC, yaml(GUESTS_FALSE.replace('false', 'true')))
-    expect((await getGuests(h)).body.error).toContain('may return personal data')
+    await getGuests(h)
+    await vi.waitFor(() => expect(markerLines(h)).toHaveLength(2))
     expect(markerLines(h).at(-1)).toBe('colada-mcp: markers s-events-guests: ok 1 operations')
+    expect((await getGuests(h)).body.error).toContain('may return personal data')
   })
 
   it('10 calls after a failed first load send one load in the hour', async () => {

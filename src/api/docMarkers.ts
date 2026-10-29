@@ -35,11 +35,13 @@ export class DocMarkers {
 
   async forService(session: RealmSession, service: string): Promise<MarkerIndex | undefined> {
     const slot = slotOf(this.services, `${session.host} ${service}`)
-    await this.attemptIfDue(slot, async () => {
+    const attempt = this.attemptIfDue(slot, async () => {
       const token = await session.baseToken()
       slot.nextAttempt = this.now() + RELOAD_AFTER_SECONDS
       this.log(`colada-mcp: markers ${service}: ${await this.loadService(session.host, token, service, slot)}`)
     })
+    if (slot.good === undefined) await attempt
+    else attempt.catch(() => undefined)
     return slot.good
   }
 
