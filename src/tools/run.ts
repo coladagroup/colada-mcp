@@ -2,8 +2,9 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import type { CallState } from '../api/backend.js'
 import type { App, RealmContext } from '../app.js'
-import type { ApiCall, FirebaseCall } from '../callLog.js'
-import { ToolError } from '../errors.js'
+import type { ApiCall, FirebaseCall, FirebaseWriteCall } from '../callLog.js'
+import { messages, ToolError } from '../errors.js'
+import { IDENTITY_INPUT_FIELDS } from '../firebase/policy/writes.js'
 import type { ResolvedWorkspace } from '../workspaces.js'
 
 export const realmInput = z
@@ -36,6 +37,8 @@ export interface ApiToolContext extends ToolContext {
 }
 
 type Handler<C> = (ctx: C) => Promise<Record<string, unknown>>
+
+type LogFields = ({ params: unknown } | ApiCall | FirebaseCall | FirebaseWriteCall) & { httpStatus?: number | null }
 
 export function runTool(
   app: App,
@@ -79,6 +82,50 @@ export function runFirebaseTool(
   })
 }
 
+export interface WriteRecord extends FirebaseWriteCall {
+  httpStatus: number | null
+}
+
+export interface FirebaseWriteToolContext extends ToolContext {
+  call: FirebaseWriteCall
+  writes: WriteRecord[]
+}
+
+export const WRITE_TOOL_ANNOTATIONS = { readOnlyHint: false, destructiveHint: true, idempotentHint: false } as const
+
+export function writeInput<T extends z.ZodRawShape>(shape: T) {
+  return z.looseObject(shape).superRefine((value, ctx) => {
+    for (const key of Object.keys(value)) {
+      if (Object.hasOwn(shape, key)) continue
+      const identity = (IDENTITY_INPUT_FIELDS as readonly string[]).includes(key)
+      ctx.addIssue({
+        code: 'custom',
+        path: [key],
+        message: identity ? messages.writeIdentityField(key) : messages.writeUnknownField(key)
+      })
+    }
+  })
+}
+
+export function runFirebaseWriteTool(
+  app: App,
+  tool: string,
+  realm: string | undefined,
+  call: FirebaseWriteCall,
+  handler: Handler<FirebaseWriteToolContext>
+): Promise<CallToolResult> {
+  const ctx: FirebaseWriteToolContext = {
+    realm: realm || null,
+    state: { httpStatus: null },
+    workspace: null,
+    call,
+    writes: []
+  }
+  return execute(app, tool, ctx, handler, () =>
+    ctx.writes.length > 0 ? ctx.writes.map((write) => ({ ...write })) : ctx.call
+  )
+}
+
 export function apiCallOf(input: {
   method: string
   service: string
@@ -100,7 +147,7 @@ async function execute<C extends ToolContext>(
   tool: string,
   ctx: C,
   handler: Handler<C>,
-  logFields: () => { params: unknown } | ApiCall | FirebaseCall
+  logFields: () => LogFields | LogFields[]
 ): Promise<CallToolResult> {
   let result: Record<string, unknown> = {}
   let error: string | null = null
@@ -112,15 +159,18 @@ async function execute<C extends ToolContext>(
   const { realm } = ctx
   const user = ctx.user !== undefined ? ctx.user : app.userOf(realm)
   try {
-    await app.deps.callLog({
-      time: new Date().toISOString(),
-      realm,
-      user,
-      workspace: ctx.workspace?.id ?? null,
-      tool,
-      ...logFields(),
-      httpStatus: ctx.state.httpStatus
-    })
+    const fields = logFields()
+    for (const { httpStatus, ...line } of Array.isArray(fields) ? fields : [fields]) {
+      await app.deps.callLog({
+        time: new Date().toISOString(),
+        realm,
+        user,
+        workspace: ctx.workspace?.id ?? null,
+        tool,
+        ...line,
+        httpStatus: httpStatus === undefined ? ctx.state.httpStatus : httpStatus
+      })
+    }
   } catch (err) {
     app.deps.log(`colada-mcp: cannot write the call log (${(err as Error).message})`)
   }
