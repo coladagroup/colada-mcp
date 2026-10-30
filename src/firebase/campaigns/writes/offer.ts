@@ -139,11 +139,18 @@ export function offerChanges(fields: Fields, stored: Fields): Fields {
   return changes
 }
 
-export function hasTreeNode(tree: unknown, uid: string): boolean {
+export function findTreeNode(tree: unknown, uid: string): Fields | null {
   const nodes = Array.isArray(tree) ? tree : tree !== null && typeof tree === 'object' ? Object.values(tree) : []
-  return nodes.some((node) => {
-    if (node === null || typeof node !== 'object') return false
+  for (const node of nodes) {
+    if (node === null || typeof node !== 'object') continue
     const record = node as Fields
-    return record.uid === uid || hasTreeNode(record.children, uid)
-  })
+    if (record.uid === uid) return record
+    const found = findTreeNode(record.children, uid)
+    if (found) return found
+  }
+  return null
+}
+
+export function hasTreeNode(tree: unknown, uid: string): boolean {
+  return findTreeNode(tree, uid) !== null
 }
