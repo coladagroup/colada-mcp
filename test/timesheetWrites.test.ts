@@ -369,6 +369,15 @@ describe('campaigns_update_timesheet_report', () => {
     expect(writes(world)).toEqual([])
   })
 
+  it('a refusal after reads logs httpStatus null, not the status of the last read (AC-P11)', async () => {
+    const { h } = await setup()
+    await update(h, { key: 't3', hours: 1 })
+
+    const lines = h.logs.filter((entry) => entry.tool === UPDATE) as unknown as Array<Record<string, unknown>>
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatchObject({ method: 'PUT', path: 'timesheet/t3', httpStatus: null })
+  })
+
   it('needs at least one field besides key', async () => {
     const { h, world } = await setup()
     const result = await update(h, { key: 't1' })

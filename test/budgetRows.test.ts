@@ -456,6 +456,14 @@ describe('campaigns_add_budget_rows: totals and writes (AC-P3)', () => {
     expect(JSON.stringify(h.logs)).not.toContain('Secret name')
   })
 
+  it('a refusal after reads logs the planned PUT with httpStatus null (AC-P11)', async () => {
+    const { h } = await setup()
+    await add(h, { offer: 'o9', rows: [{ type: 'free', name: 'X' }] })
+
+    const lines = h.logs.filter((line) => line.tool === ADD) as unknown as Array<Record<string, unknown>>
+    expect(lines.map((line) => [line.method, line.path, line.httpStatus])).toEqual([['PUT', 'plannerBudgets/o9', null]])
+  })
+
   it('reports rows saved and totals not updated (E23) when the totals PATCH fails', async () => {
     const { h, fw, world } = await setup()
     fw.beforeWrite = (method) => {

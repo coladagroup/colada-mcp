@@ -122,7 +122,7 @@ export function runFirebaseWriteTool(
     writes: []
   }
   return execute(app, tool, ctx, handler, () =>
-    ctx.writes.length > 0 ? ctx.writes.map((write) => ({ ...write })) : ctx.call
+    ctx.writes.length > 0 ? ctx.writes.map((write) => ({ ...write })) : { ...ctx.call, httpStatus: null }
   )
 }
 
