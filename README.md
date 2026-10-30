@@ -14,6 +14,12 @@ Tools:
 | `rtdb_get` | Reads one node of the Campaigns Realtime Database in one workspace. Optional `where`, `fields`, `groupBy` and `sum` run in the MCP, for exact totals. Read only. |
 | `firestore_get` | Reads one document or one page of a collection of the Campaigns Firestore. Read only. |
 | `campaigns_budget` | Computes the budget of one Campaigns project or offer with the app's rules (reserve fees, options, VAT, exchange rates). Read only. |
+| `campaigns_add_timesheet_report` | Adds one entry to your own Campaigns timesheet, with its copy in the budget row. **It changes data.** |
+| `campaigns_update_timesheet_report` | Changes or moves one of your own timesheet entries and its budget copy. **It changes data.** |
+| `campaigns_create_offer` | Creates a Campaigns offer, optionally from a lead. **It changes data.** |
+| `campaigns_update_offer` | Changes the settings of one offer. **It changes data.** |
+| `campaigns_create_lead` | Creates a lead in the Pipeline. Needs `COLADA_ALLOW_PERSONAL_DATA=true`. **It changes data.** |
+| `campaigns_add_budget_rows` | Adds knowledge base, free and group rows to an offer budget and recomputes its total. **It changes data.** |
 | `logout` | Ends the stored session. |
 
 > **Breaking change in 0.3.0.** The typed read tools `list_events`, `get_event`, `list_email_templates`, `get_email_template` and `get_registration_form` are removed. Use `api_get` instead (read the service doc with `get_api_doc` first). The server is no longer read-only.
@@ -109,11 +115,23 @@ Only the exact value `true` turns it on. Turn it on only when the task needs per
 
 ## Campaigns (Firebase)
 
-Campaigns data is not in the backoffice API but in Firebase. The Firebase tools only read; they never write and never call Cloud Functions.
+Campaigns data is not in the backoffice API but in Firebase. `rtdb_get`, `firestore_get` and `campaigns_budget` only read. The Firebase tools never call Cloud Functions.
 
 - The server gets a Firebase token with your own Colada login for the workspace of the call. The token stays in memory and is not stored; Firebase access ends with your Colada session.
 - You see what the Campaigns app shows you: the MCP checks your Campaigns permissions per data node, keeps only your own timesheet rows when you have only "own timesheet" access, and leaves out projects you may not see.
 - Personal data (for example timesheet descriptions, people on projects, contacts, chats, accounts) is removed unless `COLADA_ALLOW_PERSONAL_DATA=true`. Secrets are never returned.
+
+### Campaigns writes
+
+Six `campaigns_*` tools change Campaigns data in the Realtime Database: timesheet entries, offers, leads and budget rows. Each one writes the same nodes and fields as the matching action in the Campaigns app.
+
+- They need your Campaigns permissions for that action, as in the app. Timesheet tools change only your own entries.
+- `owner` and other user fields are always you. There is no delete and no undo.
+- Ids you pass (project, row, offer, lead, cost center, knowledge base item, unit) must exist in the workspace, or nothing is written.
+- Personal fields (for example a timesheet description or a lead name) are accepted only with `COLADA_ALLOW_PERSONAL_DATA=true`.
+- A change by someone else between read and write is kept: the tool reads again and applies your change on top, at most 3 times.
+- The tools write only to an allowlist of paths below your workspace, never to `projects/`.
+- Every write gets its own line in the call log, without the body.
 
 ## Login
 
@@ -125,7 +143,7 @@ To end the session, ask Claude to call `logout`. With several hosts and no realm
 
 ## Call log
 
-Every tool call writes one line to `~/.colada-mcp/calls.log`: time, realm, user, workspace, tool, HTTP status, and for `get_api_doc`, `api_get` and `api_write` also method, service, path, query and whether `If-Match` was sent. For the Firebase tools it holds app, store, path and the query options; `where` is logged without its values. The log never holds tokens, request or response bodies, or header values. Query values are logged as given, so a filter on a person's email appears there.
+Every tool call writes one line to `~/.colada-mcp/calls.log`: time, realm, user, workspace, tool, HTTP status, and for `get_api_doc`, `api_get` and `api_write` also method, service, path, query and whether `If-Match` was sent. For the Firebase tools it holds app, store, path and the query options; `where` is logged without its values. The `campaigns_*` write tools write one line per Firebase write (method, path, retries, HTTP status); a refused write has HTTP status `null`. The log never holds tokens, request or response bodies, or header values. Query values are logged as given, so a filter on a person's email appears there.
 
 ## Data and privacy
 

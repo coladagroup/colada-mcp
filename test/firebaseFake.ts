@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import {
   claimsOf,
   createHarness,
@@ -32,6 +33,118 @@ export interface FirebaseWorld {
   rtdbStatus: number[]
   rtdbRaw: ((url: URL) => Response | undefined) | null
   firestoreRaw: ((url: URL) => Response | undefined) | null
+  externalIds: Record<string, unknown>
+  beforeWrite: ((method: string, path: string, body: unknown) => void) | null
+}
+
+export const NULL_ETAG = 'null_etag'
+
+export function etagOf(value: unknown): string {
+  if (value === null || value === undefined) return NULL_ETAG
+  return createHash('sha1').update(JSON.stringify(value)).digest('base64')
+}
+
+function withEtag(status: number, value: unknown, etag: string | null): Response {
+  const response = json(status, value)
+  if (etag !== null) response.headers.set('etag', etag)
+  return response
+}
+
+function compact(value: unknown): unknown {
+  if (value === null || value === undefined) return null
+  if (Array.isArray(value)) {
+    const items = value.map(compact)
+    return items.every((item) => item === null) ? null : items
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .map(([k, v]) => [k, compact(v)] as const)
+      .filter(([, v]) => v !== null)
+    return entries.length ? Object.fromEntries(entries) : null
+  }
+  return value
+}
+
+export function setAt(root: Record<string, unknown>, segments: string[], value: unknown) {
+  const [head, ...rest] = segments
+  if (head === undefined) return
+  if (rest.length === 0) {
+    const next = compact(structuredClone(value))
+    if (next === null) delete root[head]
+    else root[head] = next
+    return
+  }
+  const child = root[head]
+  const container = child !== null && typeof child === 'object' ? (child as Record<string, unknown>) : {}
+  setAt(container, rest, value)
+  if (Object.keys(container).length === 0) delete root[head]
+  else root[head] = container
+}
+
+function writeAllowed(fw: FirebaseWorld, tokenWs: string, segments: string[], value: unknown): boolean {
+  const [root, ws, node] = segments
+  if (root === 'workspaces') return ws === tokenWs && node !== undefined
+  if (root === 'externalIds' && segments.length === 2) {
+    const next = value as { workspace?: unknown } | null
+    const existing = fw.externalIds[segments[1] ?? ''] as { workspace?: unknown } | undefined
+    return next?.workspace === tokenWs && (existing === undefined || existing.workspace === tokenWs)
+  }
+  return false
+}
+
+function store(fw: FirebaseWorld, segments: string[], value: unknown) {
+  const [root, ws, ...rest] = segments
+  if (root === 'externalIds') {
+    setAt(fw.externalIds, segments.slice(1), value)
+    return
+  }
+  fw.rtdb[ws ?? ''] ??= {}
+  setAt(fw.rtdb[ws ?? ''] as Record<string, unknown>, rest, value)
+}
+
+function rtdbWrite(fw: FirebaseWorld, url: URL, init: RequestInit | undefined, tokenWs: string): Response {
+  const method = init?.method ?? 'GET'
+  const headers = new Headers(init?.headers)
+  const segments = decodeURIComponent(url.pathname.replace(/\.json$/, ''))
+    .split('/')
+    .filter(Boolean)
+  const body = init?.body === undefined ? null : JSON.parse(String(init.body))
+  const wantsEtag = headers.get('x-firebase-etag') === 'true'
+  const ifMatch = headers.get('if-match')
+  if (method === 'PATCH' && ifMatch !== null) {
+    return json(400, { error: "The 'if-match' header is not supported with GET, PATCH or POST requests" })
+  }
+  if (method === 'PATCH' && wantsEtag) {
+    return json(400, { error: "The 'X-Firebase-ETag' header is not supported with PATCH requests" })
+  }
+  fw.beforeWrite?.(method, segments.join('/'), body)
+  if (method === 'PATCH') {
+    const updates: Array<[string[], unknown]> = Object.entries((body ?? {}) as Record<string, unknown>).map(
+      ([key, value]) => [[...segments, ...key.split('/')], value]
+    )
+    if (!updates.every(([path, value]) => writeAllowed(fw, tokenWs, path, value))) {
+      return json(401, { error: 'Permission denied' })
+    }
+    for (const [path, value] of updates) store(fw, path, value)
+    return json(200, body)
+  }
+  if (!writeAllowed(fw, tokenWs, segments, method === 'DELETE' ? { workspace: tokenWs } : body)) {
+    return json(401, { error: 'Permission denied' })
+  }
+  if (ifMatch !== null) {
+    const current = currentAt(fw, segments)
+    const etag = etagOf(current)
+    if (ifMatch !== etag) return withEtag(412, current, etag)
+  }
+  store(fw, segments, method === 'DELETE' ? null : body)
+  const stored = currentAt(fw, segments)
+  return withEtag(200, method === 'DELETE' ? null : stored, wantsEtag ? etagOf(stored) : null)
+}
+
+function currentAt(fw: FirebaseWorld, segments: string[]): unknown {
+  const [root, ws, ...rest] = segments
+  if (root === 'externalIds') return nodeAt(fw.externalIds, segments.slice(1))
+  return nodeAt(fw.rtdb[ws ?? ''] ?? {}, rest)
 }
 
 function nodeAt(root: unknown, segments: string[]): unknown {
@@ -44,13 +157,14 @@ function nodeAt(root: unknown, segments: string[]): unknown {
   return current ?? null
 }
 
-function rtdbAnswer(fw: FirebaseWorld, url: URL): Response {
+function rtdbAnswer(fw: FirebaseWorld, url: URL, init?: RequestInit): Response {
   const token = url.searchParams.get('auth') ?? ''
   if (!fw.idTokens.includes(token)) return json(401, { error: 'Auth token is expired' })
   const claims = claimsOf(token)
   if ((claims.exp as number) <= fw.world.now) return json(401, { error: 'Auth token is expired' })
   const forced = fw.rtdbStatus.shift()
   if (forced) return json(forced, { error: forced === 401 ? 'Auth token is expired' : 'forced' })
+  if ((init?.method ?? 'GET') !== 'GET') return rtdbWrite(fw, url, init, String(claims.COLADA_WORKSPACE_ID))
   const segments = decodeURIComponent(url.pathname.replace(/\.json$/, ''))
     .split('/')
     .filter(Boolean)
@@ -93,7 +207,8 @@ function rtdbAnswer(fw: FirebaseWorld, url: URL): Response {
     if (last !== null) entries = entries.slice(-Number(last))
     value = Object.fromEntries(entries.reverse())
   }
-  return json(200, value)
+  const wantsEtag = new Headers(init?.headers).get('x-firebase-etag') === 'true'
+  return withEtag(200, value, wantsEtag ? etagOf(value) : null)
 }
 
 export function typed(value: unknown): Record<string, unknown> {
@@ -162,7 +277,9 @@ export async function firebaseSetup(options: { allowPersonalData?: boolean } = {
     idTokens: [],
     rtdbStatus: [],
     rtdbRaw: null,
-    firestoreRaw: null
+    firestoreRaw: null,
+    externalIds: {},
+    beforeWrite: null
   }
   let lastWorkspace = ''
   world.backendRaw.set('/_gw/s-access/api/auth/integrations/campaigns/firebase/config', (_url, headers) => {
@@ -184,7 +301,7 @@ export async function firebaseSetup(options: { allowPersonalData?: boolean } = {
     fw.idTokens.push(idToken)
     return json(200, { idToken, refreshToken: 'firebase-refresh-SECRET', expiresIn: '3600' })
   })
-  world.externalRaw.set(DB_HOST, (url) => fw.rtdbRaw?.(url) ?? rtdbAnswer(fw, url))
+  world.externalRaw.set(DB_HOST, (url, init) => fw.rtdbRaw?.(url) ?? rtdbAnswer(fw, url, init))
   world.externalRaw.set(FIRESTORE_HOST, (url, init) =>
     firestoreAnswer(fw, url, Object.fromEntries(new Headers(init?.headers).entries()))
   )

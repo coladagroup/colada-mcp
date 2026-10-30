@@ -113,5 +113,37 @@ export const messages = {
   firebaseAccessChanged: () =>
     'Your Campaigns access changed while this call was running. Nothing was returned; call the tool again.',
   firebaseSecretField: (field: string, option: string) =>
-    `"${field}" is a secret and is never returned, so it cannot be used in ${option}.`
+    `"${field}" is a secret and is never returned, so it cannot be used in ${option}.`,
+  writeConflict: (path: string, tries: number) =>
+    `${path} changed ${tries} times while the MCP wrote it, so the change was not saved. Nothing more was written. Try the call again.`,
+  writeMissingPermission: (permission: string, workspace: string, tool: string) =>
+    `You lack ${permission} in workspace ${workspace}, so ${tool} cannot write.`,
+  writeHidden: (kind: string, id: string) => `${kind} ${id} is not found or is hidden from you. Nothing was written.`,
+  writeForeignEntry: (key: string) =>
+    `Timesheet entry ${key} is not yours. Only your own entries can be changed. Nothing was written.`,
+  writeEntryMoved: (key: string) =>
+    `Timesheet entry ${key} was moved (project, row or date) while this call ran. Nothing was written. Read it again and retry.`,
+  writePersonalField: (field: string) =>
+    `"${field}" is personal data. Writing it needs COLADA_ALLOW_PERSONAL_DATA=true. Nothing was written.`,
+  writeMissingReference: (kind: string, id: string, workspace: string) =>
+    `${kind} "${id}" does not exist in workspace ${workspace}. Nothing was written.`,
+  writeBadDate: (reason: string) => `${reason}.`,
+  writePartial: (tool: string, saved: string[], notSaved: string[], state: string) =>
+    `${tool} stopped after a partial write. Saved: ${saved.join(', ')}. Not saved: ${notSaved.join(', ')}. ${state}`,
+  writePathNotAllowed: (method: string, path: string, tool: string) =>
+    `${method} ${path} is not allowed for ${tool}. Nothing was written.`,
+  writeRefused: (path: string) =>
+    `Firebase refused the write to ${path} (expired token or a rules violation). Nothing was written by this request.`,
+  writeArchived: (id: string) => `Offer ${id} is archived and cannot be changed.`,
+  writeLeadHasOffer: (id: string) => `Lead ${id} already has an offer (planner/${id}).`,
+  writeBadParentRow: (uid: string, offer: string) => `parentRow "${uid}" is not in the budget of offer ${offer}.`,
+  writeBadPosition: (position: number, length: number) => `position ${position} is outside 0..${length}.`,
+  writeTicketEntity: (ticket: string) =>
+    `entity cannot be set for service ticket ${ticket}: service-ticket entries have no budget copy. Nothing was written.`,
+  writeNoFields: (idField: string) => `Pass at least one field to change besides ${idField}.`,
+  writeMissingField: (field: string) => `"${field}" is required (from the input or the lead). Nothing was written.`,
+  writeIdentityField: (field: string) => `"${field}" cannot be set. The MCP sets it from your login.`,
+  writeUnknownField: (field: string) => `"${field}" is not an input of this tool.`,
+  writeFailed: (method: string, path: string, status: number, reason: string | null) =>
+    `${method} ${path} failed (${status})${reason ? `: ${reason}` : ''}. Nothing was written by this request.`
 }

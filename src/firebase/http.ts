@@ -4,21 +4,34 @@ import { messages, ToolError } from '../errors.js'
 export const MAX_FIREBASE_DOWNLOAD_BYTES = 10_000_000
 const ERROR_TEXT_MAX_CHARS = 500
 
+export type FirebaseMethod = 'GET' | 'POST' | 'PUT' | 'PATCH'
+
 export interface FirebaseRequest {
   url: string
-  method?: 'GET' | 'POST'
+  method?: FirebaseMethod
   bearer?: string
+  headers?: Record<string, string>
   body?: unknown
+  write?: boolean
   store: string
   path: string
   tooLarge: () => string
 }
 
+export interface FirebaseConflict {
+  value: unknown
+  etag: string
+}
+
 export interface FirebaseResponse {
   status: number
   body: unknown
+  headers?: Headers
   errorText?: string
+  conflict?: FirebaseConflict
 }
+
+const PRECONDITION_FAILED = 412
 
 export class FirebaseHttp {
   constructor(
@@ -28,7 +41,10 @@ export class FirebaseHttp {
   ) {}
 
   request(request: FirebaseRequest): Promise<FirebaseResponse> {
-    return this.api.withSlot(() => this.send(request))
+    return this.api.withSlot(() => {
+      if (request.write) this.api.takeWriteBudget(request.method ?? 'GET', request.path)
+      return this.send(request)
+    })
   }
 
   private async send(request: FirebaseRequest): Promise<FirebaseResponse> {
@@ -40,7 +56,8 @@ export class FirebaseHttp {
         headers: {
           Accept: 'application/json',
           ...(request.bearer ? { Authorization: `Bearer ${request.bearer}` } : {}),
-          ...(hasBody ? { 'Content-Type': 'application/json' } : {})
+          ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+          ...request.headers
         },
         ...(hasBody ? { body: JSON.stringify(request.body) } : {}),
         redirect: 'error',
@@ -49,27 +66,41 @@ export class FirebaseHttp {
     } catch {
       throw new ToolError(messages.firebaseFailed(request.store, request.path, null))
     }
+    if (response.status === PRECONDITION_FAILED) {
+      const value = await readJson(response, request)
+      return {
+        status: response.status,
+        body: value,
+        headers: response.headers,
+        conflict: { value, etag: response.headers.get('etag') ?? '' }
+      }
+    }
     if (response.status < 200 || response.status >= 300) {
       const errorText = (await readBytes(response, ERROR_TEXT_MAX_CHARS))?.toString('utf8') ?? ''
       return {
         status: response.status,
         body: parseOrNull(errorText),
-        errorText: errorText.trim().slice(0, ERROR_TEXT_MAX_CHARS)
+        errorText: errorText.trim().slice(0, ERROR_TEXT_MAX_CHARS),
+        headers: response.headers
       }
     }
-    if (Number(response.headers.get('content-length') ?? 0) > MAX_FIREBASE_DOWNLOAD_BYTES) {
-      await response.body?.cancel().catch(() => undefined)
-      throw new ToolError(request.tooLarge())
-    }
-    const bytes = await readBytes(response, MAX_FIREBASE_DOWNLOAD_BYTES + 1)
-    if (bytes === null) throw new ToolError(messages.firebaseFailed(request.store, request.path, response.status))
-    if (bytes.byteLength > MAX_FIREBASE_DOWNLOAD_BYTES) throw new ToolError(request.tooLarge())
-    const text = bytes.toString('utf8')
-    try {
-      return { status: response.status, body: text === '' ? null : JSON.parse(text) }
-    } catch {
-      throw new ToolError(messages.firebaseFailed(request.store, request.path, response.status))
-    }
+    return { status: response.status, body: await readJson(response, request), headers: response.headers }
+  }
+}
+
+async function readJson(response: Response, request: FirebaseRequest): Promise<unknown> {
+  if (Number(response.headers.get('content-length') ?? 0) > MAX_FIREBASE_DOWNLOAD_BYTES) {
+    await response.body?.cancel().catch(() => undefined)
+    throw new ToolError(request.tooLarge())
+  }
+  const bytes = await readBytes(response, MAX_FIREBASE_DOWNLOAD_BYTES + 1)
+  if (bytes === null) throw new ToolError(messages.firebaseFailed(request.store, request.path, response.status))
+  if (bytes.byteLength > MAX_FIREBASE_DOWNLOAD_BYTES) throw new ToolError(request.tooLarge())
+  const text = bytes.toString('utf8')
+  try {
+    return text === '' ? null : JSON.parse(text)
+  } catch {
+    throw new ToolError(messages.firebaseFailed(request.store, request.path, response.status))
   }
 }
 

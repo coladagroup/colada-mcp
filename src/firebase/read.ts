@@ -43,9 +43,10 @@ export interface FirestoreInput extends FirebaseTarget {
   fields?: string[]
 }
 
-interface Reader {
+export interface Reader {
   workspace: string
   access: () => Promise<FirebaseAccess>
+  renew: () => Promise<FirebaseAccess>
   send: (
     request: (access: FirebaseAccess) => Promise<FirebaseResponse>,
     store: Store,
@@ -56,7 +57,11 @@ interface Reader {
 const FIRESTORE_HOST = 'https://firestore.googleapis.com/v1'
 const DEFAULT_PAGE_SIZE = 50
 
-async function openReader(app: App, ctx: FirebaseToolContext, target: FirebaseTarget): Promise<Reader> {
+export async function openReader(
+  app: App,
+  ctx: Pick<FirebaseToolContext, 'realm' | 'state' | 'workspace'>,
+  target: FirebaseTarget
+): Promise<Reader> {
   const { directory, firebase } = await openRealm(app, ctx, target.realm)
   const workspace = await directory.resolve(target.workspace, ctx.state)
   ctx.workspace = workspace
@@ -66,27 +71,26 @@ async function openReader(app: App, ctx: FirebaseToolContext, target: FirebaseTa
     return snapshot.current
   }
   const renew = async () => {
+    const used = await access()
     firebase.drop(workspace.id, target.app)
-    return firebase.access(workspace.id, target.app, ctx.state)
+    const fresh = await firebase.access(workspace.id, target.app, ctx.state)
+    if (!sameAccess(used, fresh)) throw new ToolError(messages.firebaseAccessChanged())
+    snapshot.current = fresh
+    return fresh
   }
-  return { workspace: workspace.id, access, send: sender(access, renew, snapshot, ctx) }
+  return { workspace: workspace.id, access, renew, send: sender(access, renew, ctx) }
 }
 
 function sender(
   access: () => Promise<FirebaseAccess>,
   renew: () => Promise<FirebaseAccess>,
-  snapshot: { current: FirebaseAccess | null },
-  ctx: FirebaseToolContext
+  ctx: Pick<FirebaseToolContext, 'state'>
 ): Reader['send'] {
   return async (request, store, path) => {
-    const used = await access()
-    let response = await request(used)
+    let response = await request(await access())
     ctx.state.httpStatus = response.status
     if (response.status === 401) {
-      const fresh = await renew()
-      if (!sameAccess(used, fresh)) throw new ToolError(messages.firebaseAccessChanged())
-      snapshot.current = fresh
-      response = await request(fresh)
+      response = await request(await renew())
       ctx.state.httpStatus = response.status
     }
     if (response.status === 401 || response.status === 403) throw new ToolError(messages.firebaseRefused(path))
@@ -106,7 +110,7 @@ function sameAccess(a: FirebaseAccess, b: FirebaseAccess): boolean {
   return a.uid === b.uid && sorted(a.roles) === sorted(b.roles) && sorted(a.permissions) === sorted(b.permissions)
 }
 
-function upstreamText(response: FirebaseResponse): string | null {
+export function upstreamText(response: FirebaseResponse): string | null {
   const body = response.body as { error?: unknown } | null
   const error = body?.error
   if (typeof error === 'string') return error.slice(0, 300)
@@ -148,7 +152,7 @@ function linkedKinds(rule: NodeRule): ProjectKind[] {
 
 const hiddenByAccess = new WeakMap<FirebaseAccess, Map<ProjectKind, Promise<Set<string>>>>()
 
-async function hiddenProjects(app: App, reader: Reader, rule: NodeRule): Promise<Set<string>> {
+export async function hiddenProjects(app: App, reader: Reader, rule: NodeRule): Promise<Set<string>> {
   const kinds = linkedKinds(rule)
   if (kinds.length === 0) return new Set()
   const access = await reader.access()

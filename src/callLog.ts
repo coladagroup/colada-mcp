@@ -17,6 +17,16 @@ export interface FirebaseCall {
   query: Record<string, unknown>
 }
 
+export interface FirebaseWriteCall {
+  app: string
+  store: 'rtdb'
+  method: string
+  path: string
+  paths: string[] | null
+  ifMatch: boolean
+  retries: number
+}
+
 interface CallLogBase {
   time: string
   realm: string | null
@@ -26,7 +36,7 @@ interface CallLogBase {
   httpStatus: number | null
 }
 
-export type CallLogEntry = CallLogBase & ({ params: unknown } | ApiCall | FirebaseCall)
+export type CallLogEntry = CallLogBase & ({ params: unknown } | ApiCall | FirebaseCall | FirebaseWriteCall)
 
 export type CallLog = (entry: CallLogEntry) => Promise<void>
 

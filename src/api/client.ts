@@ -54,7 +54,7 @@ export class ApiClient {
     }
   }
 
-  private takeWriteBudget(method: string, path: string) {
+  takeWriteBudget(method: string, path: string) {
     const minuteAgo = this.now() - 60_000
     while (this.writeTimes.length && (this.writeTimes[0] ?? 0) <= minuteAgo) this.writeTimes.shift()
     if (this.writeTimes.length >= MAX_WRITES_PER_MINUTE) {
