@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { type BudgetRow, calculateAllocated, calculateTotal } from '../src/firebase/campaigns/budgetMath.js'
-import { firebaseSetup, rtdbRequests } from './firebaseFake.js'
+import { firebaseSetup, ME, rtdbRequests } from './firebaseFake.js'
 import { type Harness, WS_A } from './harness.js'
 
 const WS = WS_A
@@ -8,6 +8,8 @@ const ADD = 'campaigns_add_budget_rows'
 const ALL = ['campaigns_app:view', 'campaigns_app/offers/budget:manage']
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const RATES = { EUR: 1.05 }
+const NOW_JSON = '2027-01-15T08:00:00.000Z'
+const PUSH_KEY = /^[-0-9A-Za-z_]{20}$/
 
 const OFFER = {
   uid: 'o1',
@@ -135,8 +137,15 @@ const writeSummary = (world: Parameters<typeof rtdbRequests>[0]) =>
     .map((request) => {
       const path = request.url.pathname.replace(`/workspaces/${WS}/`, '')
       if (request.method !== 'PATCH') return `${request.method} ${path}`
-      return `PATCH ${path} ${Object.keys(JSON.parse(String(request.body))).join(' ')}`
+      const keys = Object.keys(JSON.parse(String(request.body))).map((key) =>
+        key.replace(`workspaces/${WS}/`, '').replace(/^history\/[-0-9A-Za-z_]{20}$/, 'history/<key>')
+      )
+      return `PATCH ${path} ${keys.join(' ')}`
     })
+
+type HistoryRecord = Record<string, unknown>
+const history = (fw: Fw) => Object.values((fw.rtdb[WS]?.history ?? {}) as Record<string, HistoryRecord>)
+const edits = (fw: Fw) => history(fw).map((record) => [record.item, record.field, record.from, record.to])
 
 const add = (h: Harness, args: Record<string, unknown>) => h.call(ADD, { workspace: WS, offer: 'o1', ...args })
 
@@ -419,10 +428,13 @@ describe('campaigns_add_budget_rows: totals and writes (AC-P3)', () => {
     expect(allocated).toBe(300)
     expect(planner(fw)).toMatchObject({ total, allocated, name: 'Gala', owner: 'boss' })
     expect(result.body).toMatchObject({ offer: 'o1', total, allocated, retries: 0 })
-    expect(writeSummary(world)).toEqual(['PUT plannerBudgets/o1.json', 'PATCH planner/o1.json total allocated'])
+    expect(writeSummary(world)).toEqual([
+      'PUT plannerBudgets/o1.json',
+      'PATCH /.json planner/o1/total planner/o1/allocated history/<key> history/<key> history/<key>'
+    ])
     expect(result.body.written).toEqual([
       { method: 'PUT', path: 'plannerBudgets/o1' },
-      { method: 'PATCH', path: 'planner/o1' }
+      { method: 'PATCH', path: '/' }
     ])
   })
 
@@ -451,7 +463,7 @@ describe('campaigns_add_budget_rows: totals and writes (AC-P3)', () => {
     const lines = h.logs.filter((line) => line.tool === ADD) as unknown as Array<Record<string, unknown>>
     expect(lines.map((line) => [line.method, line.path, line.ifMatch, line.retries, line.httpStatus])).toEqual([
       ['PUT', 'plannerBudgets/o1', true, 0, 200],
-      ['PATCH', 'planner/o1', false, 0, 200]
+      ['PATCH', '/', false, 0, 200]
     ])
     expect(JSON.stringify(h.logs)).not.toContain('Secret name')
   })
@@ -473,12 +485,125 @@ describe('campaigns_add_budget_rows: totals and writes (AC-P3)', () => {
 
     expect(result.isError).toBe(true)
     expect(result.body.error).toContain(
-      `${ADD} stopped after a partial write. Saved: plannerBudgets/o1. Not saved: planner/o1/total, planner/o1/allocated.`
+      `${ADD} stopped after a partial write. Saved: plannerBudgets/o1. Not saved: planner/o1/total, planner/o1/allocated, 2 history records.`
     )
-    expect(result.body.error).toContain('The rows are saved, but total and allocated of the offer are not updated.')
+    expect(result.body.error).toContain(
+      'The rows are saved, but total and allocated of the offer and the history records are not written.'
+    )
+    expect(history(fw)).toEqual([])
     expect(budget(fw)).toHaveLength(3)
     expect(planner(fw).total).toBe(2000)
-    expect(writeSummary(world)).toEqual(['PUT plannerBudgets/o1.json', 'PATCH planner/o1.json total allocated'])
+    expect(writeSummary(world)).toEqual([
+      'PUT plannerBudgets/o1.json',
+      'PATCH /.json planner/o1/total planner/o1/allocated history/<key> history/<key>'
+    ])
+  })
+})
+
+describe('campaigns_add_budget_rows: history records as the budget table writes them (P36)', () => {
+  it('a free row writes one updated record per field a user would edit in the new empty row', async () => {
+    const { h, fw } = await setup()
+    const result = await add(h, {
+      rows: [{ type: 'free', name: 'Transport', price: 250, q1: 2, u1: 'Stk.', q2: 3, u2: 'Std.', pdfDescription: 'x' }]
+    })
+
+    expect(result.isError).toBe(false)
+    expect(edits(fw)).toEqual([
+      ['', 'name', '', 'Transport'],
+      ['Transport', 'price', 0, 250],
+      ['Transport', 'selectedQuantity', 1, 2],
+      ['Transport', 'quantityType', '', 'Stk.'],
+      ['Transport', 'qty2', '', 3],
+      ['Transport', 'quantity2Unit', '', 'Std.']
+    ])
+    const [first] = history(fw)
+    expect(first).toEqual({
+      uid: expect.stringMatching(PUSH_KEY),
+      module: 'budget',
+      item: '',
+      action: 'updated',
+      from: '',
+      to: 'Transport',
+      field: 'name',
+      date: NOW_JSON,
+      user: ME,
+      source: 'o1',
+      type: 'string',
+      valueType: 'string'
+    })
+    const keys = Object.keys(fw.rtdb[WS]?.history as Record<string, unknown>)
+    expect(keys).toEqual(history(fw).map((record) => record.uid))
+    expect(new Set(keys).size).toBe(6)
+  })
+
+  it('a free row with only a name writes only the name record (price 0 and quantity 1 are the empty-row values)', async () => {
+    const { h, fw } = await setup()
+    await add(h, { rows: [{ type: 'free', name: 'Extra', price: 0, q1: 1 }] })
+
+    expect(edits(fw)).toEqual([['', 'name', '', 'Extra']])
+  })
+
+  it('a KB row without overrides, or with overrides equal to the KB values, writes no record', async () => {
+    const { h, fw } = await setup()
+    await add(h, {
+      rows: [
+        { type: 'kb', kbItem: 'kbA' },
+        { type: 'kb', kbItem: 'kbA1', name: 'Speaker', price: 50, u1: 'Stk.', pdfDescription: 'only text' }
+      ]
+    })
+
+    expect(history(fw)).toEqual([])
+  })
+
+  it('a KB row writes a record for each override that changes a value, from the converted KB value', async () => {
+    const { h, fw } = await setup()
+    await add(h, { rows: [{ type: 'kb', kbItem: 'kbA1', name: 'Big speaker', price: 75, q1: 3, u2: 'Std.' }] })
+
+    expect(edits(fw)).toEqual([
+      ['Speaker', 'name', 'Speaker', 'Big speaker'],
+      ['Big speaker', 'price', 50, 75],
+      ['Big speaker', 'selectedQuantity', 1, 3],
+      ['Big speaker', 'quantity2Unit', '', 'Std.']
+    ])
+  })
+
+  it('a group writes its name record and the records of its children in input order', async () => {
+    const { h, fw } = await setup()
+    await add(h, {
+      rows: [
+        {
+          type: 'group',
+          name: 'Technik',
+          children: [
+            { type: 'kb', kbItem: 'kbA1' },
+            { type: 'free', name: 'Setup', price: 10 }
+          ]
+        }
+      ]
+    })
+
+    expect(edits(fw)).toEqual([
+      ['', 'name', '', 'Technik'],
+      ['', 'name', '', 'Setup'],
+      ['Setup', 'price', 0, 10]
+    ])
+  })
+
+  it('writes the history records only once after a re-apply (AC-P6)', async () => {
+    const { h, fw } = await setup()
+    let changed = false
+    fw.beforeWrite = (method, path) => {
+      if (changed || method !== 'PUT' || !path.endsWith('plannerBudgets/o1')) return
+      changed = true
+      budget(fw)[0] = { ...(budget(fw)[0] as Row), name: 'Venue (renamed)' }
+    }
+    const result = await add(h, { rows: [{ type: 'free', name: 'New', price: 1 }] })
+
+    expect(result.body.retries).toBe(1)
+    expect(edits(fw)).toEqual([
+      ['', 'name', '', 'New'],
+      ['New', 'price', 0, 1]
+    ])
   })
 })
 

@@ -97,7 +97,8 @@ export const WRITE_RULES: readonly WriteRule[] = [
   rule('W14', 'campaigns_add_budget_rows', 'patch', `planner/${ID}/{field}`, ['total', 'allocated']),
   rule('W15', 'campaigns_create_lead', 'patch', `deals/${ID}`),
   rule('W16', 'campaigns_create_lead', 'patch', `taskBoards/${ID}`),
-  rule('W17', 'campaigns_create_lead', 'patch', `externalIds/${ID}`)
+  rule('W17', 'campaigns_create_lead', 'patch', `externalIds/${ID}`),
+  rule('W18', 'campaigns_add_budget_rows', 'patch', `history/${ID}`)
 ]
 
 export const WRITE_PERMISSIONS: Record<WriteTool, string> = {

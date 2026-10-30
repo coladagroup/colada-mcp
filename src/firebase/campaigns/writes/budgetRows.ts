@@ -5,15 +5,47 @@ import type { FirebaseWriteToolContext } from '../../../tools/run.js'
 import { isHiddenProject } from '../../policy/rows.js'
 import type { PlannedWrite, WriteTool } from '../../policy/writes.js'
 import { type BudgetRow, CHF_CURRENCY, calculateAllocated, calculateTotal, type ExchangeRates } from '../budgetMath.js'
-import { type Built, buildRow, insertRows, type Place, type PlacedInput, rowAmount, walkRows } from './budgetRow.js'
-import { assertId, open, partial, type Target, written } from './common.js'
+import {
+  type Built,
+  buildRow,
+  type Edit,
+  insertRows,
+  type Place,
+  type PlacedInput,
+  rowAmount,
+  walkRows
+} from './budgetRow.js'
+import { assertId, nowJson, open, partial, type Target, written } from './common.js'
 import { conditionalWrite } from './conditional.js'
 import { type Fields, findTreeNode } from './offer.js'
+import { pushKey } from './pushKey.js'
 
 export const ADD_BUDGET_ROWS: WriteTool = 'campaigns_add_budget_rows'
 
 function isRecord(value: unknown): value is Fields {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function historyRecords(app: App, edits: Edit[], user: string, offer: string): Fields {
+  const nowMs = app.deps.now() * 1000
+  const date = nowJson(app)
+  return Object.fromEntries(
+    edits.map((edit, index) => {
+      const uid = pushKey(nowMs + index)
+      const record = {
+        uid,
+        module: 'budget',
+        ...edit,
+        action: 'updated',
+        date,
+        user,
+        source: offer,
+        type: 'string',
+        valueType: 'string'
+      }
+      return [`history/${uid}`, record]
+    })
+  )
 }
 
 export async function addBudgetRows(
@@ -59,8 +91,9 @@ export async function addBudgetRows(
     if (missing !== undefined) throw new ToolError(messages.writeMissingReference('Unit', missing, workspace))
   }
 
+  const edits: Edit[] = []
   const built: Built[] = rows.map((row) => ({
-    row: buildRow(row, currency, kbNode, randomUUID),
+    row: buildRow(row, currency, kbNode, randomUUID, edits),
     parentRow: row.parentRow,
     position: row.position
   }))
@@ -73,14 +106,20 @@ export async function addBudgetRows(
   const list = result.value as BudgetRow[]
   const total = calculateTotal(list, false, currency, rates)
   const allocated = calculateAllocated(list)
+  const history = historyRecords(app, edits, session.uid, offer)
   try {
-    await session.writer.patch(`planner/${offer}`, { total, allocated })
+    await session.writer.patch('', {
+      [`planner/${offer}/total`]: total,
+      [`planner/${offer}/allocated`]: allocated,
+      ...history
+    })
   } catch (err) {
+    const records = Object.keys(history).length
     partial(
       ctx,
       ADD_BUDGET_ROWS,
-      [`planner/${offer}/total`, `planner/${offer}/allocated`],
-      'The rows are saved, but total and allocated of the offer are not updated. The next budget save in the UI recomputes them.',
+      [`planner/${offer}/total`, `planner/${offer}/allocated`, ...(records > 0 ? [`${records} history records`] : [])],
+      'The rows are saved, but total and allocated of the offer and the history records are not written. The next budget save in the UI recomputes the totals.',
       err
     )
   }

@@ -42,6 +42,13 @@ export interface Place {
   position: number
 }
 
+export interface Edit {
+  item: unknown
+  field: string
+  from: unknown
+  to: unknown
+}
+
 function pickCurrency(content: Fields, field: string, currency: string) {
   const value = content[field]
   if (!value) return
@@ -90,9 +97,8 @@ export function convertKnowledgeBaseItem(data: Fields, currency: string, newUid:
   return item
 }
 
-function contentOverrides(input: RowFields): Fields {
+function tableFields(input: RowFields): Fields {
   return defined({
-    pdfDescription: input.pdfDescription,
     price: input.price,
     selectedQuantity: input.q1 === undefined ? undefined : input.q1 || 1,
     quantityType: input.u1,
@@ -101,31 +107,41 @@ function contentOverrides(input: RowFields): Fields {
   })
 }
 
+function applyEdits(row: Fields, input: RowFields, edits: Edit[]): Fields {
+  if (input.name !== undefined && input.name !== row.name) {
+    edits.push({ item: row.name ?? '', field: 'name', from: row.name ?? '', to: input.name })
+    row.name = input.name
+  }
+  const content = { ...(row.content as Fields) }
+  for (const [field, value] of Object.entries(tableFields(input))) {
+    if (content[field] === value) continue
+    edits.push({ item: row.name, field, from: content[field] ?? '', to: value })
+    content[field] = value
+  }
+  if (input.pdfDescription !== undefined) content.pdfDescription = input.pdfDescription
+  row.content = content
+  return row
+}
+
+function emptyRow(newUid: () => string): Fields {
+  return { uid: newUid(), name: '', content: { price: 0, selectedQuantity: 1 } }
+}
+
 export function buildRow(
   input: RowInput,
   currency: string,
   kbNode: (uid: string) => Fields,
-  newUid: () => string
+  newUid: () => string,
+  edits: Edit[]
 ): Fields {
   if (input.type === 'group') {
-    return {
-      uid: newUid(),
-      name: input.name,
-      content: { price: 0, selectedQuantity: 1 },
-      subRows: input.children.map((child) => buildRow(child, currency, kbNode, newUid))
-    }
+    const group = applyEdits(emptyRow(newUid), { name: input.name }, edits)
+    group.subRows = input.children.map((child) => buildRow(child, currency, kbNode, newUid, edits))
+    return group
   }
-  if (input.type === 'free') {
-    return {
-      uid: newUid(),
-      name: input.name,
-      content: { price: 0, selectedQuantity: 1, ...contentOverrides(input) }
-    }
-  }
-  const row = convertKnowledgeBaseItem(kbNode(input.kbItem), currency, newUid)
-  if (input.name !== undefined) row.name = input.name
-  row.content = { ...(row.content as Fields), ...contentOverrides(input) }
-  return row
+  const row =
+    input.type === 'free' ? emptyRow(newUid) : convertKnowledgeBaseItem(kbNode(input.kbItem), currency, newUid)
+  return applyEdits(row, input, edits)
 }
 
 function findRow(rows: Fields[], uid: string): Fields | null {

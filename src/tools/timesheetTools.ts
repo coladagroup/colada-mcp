@@ -34,7 +34,7 @@ export function registerTimesheetTools(server: McpServer, app: App) {
   server.registerTool(
     ADD_TIMESHEET,
     {
-      description: `Adds one entry to your own Campaigns timesheet in one workspace, as the Timesheet page does. With "entity" the entry is also copied into reports[date] of that row in budgets/<project>. owner is always you. ${WRITTEN_NOTE}`,
+      description: `Adds one entry to your own Campaigns timesheet in one workspace, as the Timesheet page does. With "entity" the entry is also copied into reports[date] of that row in budgets/<project>. The Timesheet page counts an entry only when it has "account" and "description" (it shows a red "!" otherwise), so pass both. owner is always you. ${WRITTEN_NOTE}`,
       inputSchema: writeInput({ ...realmShape(app), workspace: workspaceInput, ...fields }),
       annotations: WRITE_TOOL_ANNOTATIONS
     },

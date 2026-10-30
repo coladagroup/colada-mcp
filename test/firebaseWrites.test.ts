@@ -50,7 +50,8 @@ const EXPECTED_RULES: Array<[string, WriteTool, 'put' | 'patch', string]> = [
   ['W14', 'campaigns_add_budget_rows', 'patch', 'workspaces/{ws}/planner/{id}/{field}'],
   ['W15', 'campaigns_create_lead', 'patch', 'workspaces/{ws}/deals/{id}'],
   ['W16', 'campaigns_create_lead', 'patch', 'workspaces/{ws}/taskBoards/{id}'],
-  ['W17', 'campaigns_create_lead', 'patch', 'externalIds/{id}']
+  ['W17', 'campaigns_create_lead', 'patch', 'externalIds/{id}'],
+  ['W18', 'campaigns_add_budget_rows', 'patch', 'workspaces/{ws}/history/{id}']
 ]
 
 const EXPECTED_FIELDS: Record<string, string[]> = {
