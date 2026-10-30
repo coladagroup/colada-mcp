@@ -115,7 +115,7 @@ function applyEdits(row: Fields, input: RowFields, edits: Edit[]): Fields {
   const content = { ...(row.content as Fields) }
   for (const [field, value] of Object.entries(tableFields(input))) {
     if (content[field] === value) continue
-    edits.push({ item: row.name, field, from: content[field] ?? '', to: value })
+    edits.push({ item: row.name ?? '', field, from: content[field] ?? '', to: value })
     content[field] = value
   }
   if (input.pdfDescription !== undefined) content.pdfDescription = input.pdfDescription

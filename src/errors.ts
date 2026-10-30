@@ -121,6 +121,8 @@ export const messages = {
   writeHidden: (kind: string, id: string) => `${kind} ${id} is not found or is hidden from you. Nothing was written.`,
   writeForeignEntry: (key: string) =>
     `Timesheet entry ${key} is not yours. Only your own entries can be changed. Nothing was written.`,
+  writeEntryMoved: (key: string) =>
+    `Timesheet entry ${key} was moved (project, row or date) while this call ran. Nothing was written. Read it again and retry.`,
   writePersonalField: (field: string) =>
     `"${field}" is personal data. Writing it needs COLADA_ALLOW_PERSONAL_DATA=true. Nothing was written.`,
   writeMissingReference: (kind: string, id: string, workspace: string) =>

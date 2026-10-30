@@ -25,6 +25,8 @@ import {
 export const ADD_TIMESHEET: WriteTool = 'campaigns_add_timesheet_report'
 export const UPDATE_TIMESHEET: WriteTool = 'campaigns_update_timesheet_report'
 
+const PLACE_FIELDS = ['project', 'entity', 'date'] as const
+
 type Booked = { kind: 'project'; record: Record<string, unknown> } | { kind: 'ticket' } | null
 
 async function booked(session: Session, project: string): Promise<Booked> {
@@ -168,7 +170,12 @@ export async function updateTimesheetReport(
   const result = await conditionalWrite(
     session.writer,
     `timesheet/${key}`,
-    (current) => mergeEntry(own(current), fields),
+    (current) => {
+      const fresh = own(current)
+      if (PLACE_FIELDS.some((field) => fresh[field] !== stored[field]))
+        throw new ToolError(messages.writeEntryMoved(key))
+      return mergeEntry(fresh, fields)
+    },
     first
   )
   const entry = result.value as Entry

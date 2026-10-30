@@ -114,7 +114,8 @@ async function setup(options: { permissions?: string[] } = {}) {
       KB_AUDIO,
       KB_FEE,
       KB_EURO,
-      { uid: 'kbG', name: 'Group', children: [{ uid: 'kbG1', name: 'Deep' }] }
+      { uid: 'kbG', name: 'Group', children: [{ uid: 'kbG1', name: 'Deep' }] },
+      { uid: 'kbN', content: { price: { CHF: 4 } } }
     ],
     units: [
       { uid: 'Std.', name: 'Std.' },
@@ -565,6 +566,13 @@ describe('campaigns_add_budget_rows: history records as the budget table writes 
       ['Big speaker', 'selectedQuantity', 1, 3],
       ['Big speaker', 'quantity2Unit', '', 'Std.']
     ])
+  })
+
+  it('a KB row without a name writes item "" in its field records, as useHistory', async () => {
+    const { h, fw } = await setup()
+    await add(h, { rows: [{ type: 'kb', kbItem: 'kbN', price: 6 }] })
+
+    expect(history(fw).map((record) => record.item)).toEqual([''])
   })
 
   it('a group writes its name record and the records of its children in input order', async () => {

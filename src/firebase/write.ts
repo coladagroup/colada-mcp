@@ -61,6 +61,8 @@ export async function openWriter(
     record: Omit<WriteRecord, 'httpStatus' | 'app' | 'store' | 'method'>,
     ifMatch: string | null
   ): Promise<FirebaseResponse> => {
+    const entry: WriteRecord = { app: 'campaigns', store: 'rtdb', method, ...record, httpStatus: null }
+    ctx.writes.push(entry)
     const used = await reader.access()
     checkFirebaseWrite(
       tool,
@@ -70,8 +72,6 @@ export async function openWriter(
         uid: used.uid
       }
     )
-    const entry: WriteRecord = { app: 'campaigns', store: 'rtdb', method, ...record, httpStatus: null }
-    ctx.writes.push(entry)
     const shown = record.path
     const send = (current: FirebaseAccess) =>
       app.firebaseHttp.request({
