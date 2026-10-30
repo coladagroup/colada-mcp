@@ -1,10 +1,9 @@
 import type { App } from '../../../app.js'
 import { messages, ToolError } from '../../../errors.js'
 import type { FirebaseWriteToolContext } from '../../../tools/run.js'
-import { splitPath } from '../../policy/check.js'
-import { campaignsRole, isHiddenProject } from '../../policy/rows.js'
+import { isHiddenProject } from '../../policy/rows.js'
 import { checkPersonalInput, type PlannedWrite, type WriteTool } from '../../policy/writes.js'
-import { type CampaignsWriter, openWriter } from '../../write.js'
+import { assertId, open, partial, type Session, type Target, written } from './common.js'
 import { conditionalWrite, NULL_ETAG, type Versioned } from './conditional.js'
 import {
   budgetList,
@@ -26,34 +25,7 @@ import {
 export const ADD_TIMESHEET: WriteTool = 'campaigns_add_timesheet_report'
 export const UPDATE_TIMESHEET: WriteTool = 'campaigns_update_timesheet_report'
 
-export interface Target {
-  realm?: string
-  workspace?: string
-}
-
 type Booked = { kind: 'project'; record: Record<string, unknown> } | { kind: 'ticket' } | null
-
-interface Session {
-  writer: CampaignsWriter
-  uid: string
-  role: string
-}
-
-function assertId(id: string) {
-  if (splitPath(id).length !== 1) throw new ToolError(messages.firebasePath(id, 'the id must be one path segment'))
-}
-
-async function open(
-  app: App,
-  ctx: FirebaseWriteToolContext,
-  tool: WriteTool,
-  target: Target,
-  planned: PlannedWrite[]
-): Promise<Session> {
-  const writer = await openWriter(app, ctx, tool, target, planned)
-  const access = await writer.access()
-  return { writer, uid: access.uid, role: campaignsRole(access.roles) }
-}
 
 async function booked(session: Session, project: string): Promise<Booked> {
   if (project === '') return null
@@ -104,25 +76,6 @@ function shown(app: App, entry: Entry): Entry {
 
 function placeOut(place: CopyPlace | null) {
   return place && { budget: `budgets/${place.project}`, row: place.row, date: place.date }
-}
-
-function written(ctx: FirebaseWriteToolContext) {
-  return ctx.writes
-    .filter((write) => write.httpStatus !== null && write.httpStatus >= 200 && write.httpStatus < 300)
-    .map((write) => ({ method: write.method, path: write.path }))
-}
-
-function partial(
-  ctx: FirebaseWriteToolContext,
-  tool: WriteTool,
-  notSaved: string[],
-  state: string,
-  err: unknown
-): never {
-  if (!(err instanceof ToolError)) throw err
-  const saved = written(ctx).map((write) => write.path)
-  if (saved.length === 0) throw err
-  throw new ToolError(messages.writePartial(tool, saved, notSaved, `${state} Cause: ${err.message}`))
 }
 
 export async function addTimesheetReport(
@@ -180,7 +133,7 @@ export async function updateTimesheetReport(
 ) {
   checkPersonalInput(UPDATE_TIMESHEET, input, app.deps.allowPersonalData)
   const { realm: _realm, workspace: _workspace, key, ...fields } = input
-  if (Object.values(fields).every((value) => value === undefined)) throw new ToolError(messages.writeNoFields())
+  if (Object.values(fields).every((value) => value === undefined)) throw new ToolError(messages.writeNoFields('key'))
   assertId(key)
   if (fields.project !== undefined) assertId(fields.project)
   if (fields.entity) assertId(fields.entity)

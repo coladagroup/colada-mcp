@@ -138,7 +138,8 @@ export const messages = {
   writeBadPosition: (position: number, length: number) => `position ${position} is outside 0..${length}.`,
   writeTicketEntity: (ticket: string) =>
     `entity cannot be set for service ticket ${ticket}: service-ticket entries have no budget copy. Nothing was written.`,
-  writeNoFields: () => 'Pass at least one field to change besides key.',
+  writeNoFields: (idField: string) => `Pass at least one field to change besides ${idField}.`,
+  writeMissingField: (field: string) => `"${field}" is required (from the input or the lead). Nothing was written.`,
   writeIdentityField: (field: string) => `"${field}" cannot be set. The MCP sets it from your login.`,
   writeUnknownField: (field: string) => `"${field}" is not an input of this tool.`,
   writeFailed: (method: string, path: string, status: number, reason: string | null) =>

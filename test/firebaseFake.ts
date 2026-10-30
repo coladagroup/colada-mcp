@@ -34,7 +34,7 @@ export interface FirebaseWorld {
   rtdbRaw: ((url: URL) => Response | undefined) | null
   firestoreRaw: ((url: URL) => Response | undefined) | null
   externalIds: Record<string, unknown>
-  beforeWrite: ((method: string, path: string) => void) | null
+  beforeWrite: ((method: string, path: string, body: unknown) => void) | null
 }
 
 export const NULL_ETAG = 'null_etag'
@@ -117,7 +117,7 @@ function rtdbWrite(fw: FirebaseWorld, url: URL, init: RequestInit | undefined, t
   if (method === 'PATCH' && wantsEtag) {
     return json(400, { error: "The 'X-Firebase-ETag' header is not supported with PATCH requests" })
   }
-  fw.beforeWrite?.(method, segments.join('/'))
+  fw.beforeWrite?.(method, segments.join('/'), body)
   if (method === 'PATCH') {
     const updates: Array<[string[], unknown]> = Object.entries((body ?? {}) as Record<string, unknown>).map(
       ([key, value]) => [[...segments, ...key.split('/')], value]

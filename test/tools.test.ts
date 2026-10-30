@@ -630,12 +630,13 @@ describe('NFR: no token in answers or logs', () => {
 
 describe('tool definitions', () => {
   it('name no customer host or realm in tools/list', async () => {
+    const tenant = 'tenant.example.com'
     const world = new FakeWorld()
-    world.addRealm(CLIENT, { name: 'client', user: 'frank-client' })
-    for (const hosts of [[STAGE], [PROD, CLIENT]]) {
+    world.addRealm(tenant, { name: 'tenant', user: 'frank-tenant' })
+    for (const hosts of [[STAGE], [PROD, tenant]]) {
       const h = await setup({ hosts, world })
       const definitions = JSON.stringify(await h.client.listTools())
-      expect(definitions).not.toMatch(/client|colada365/i)
+      expect(definitions).not.toMatch(/tenant|colada365/i)
     }
   })
 
