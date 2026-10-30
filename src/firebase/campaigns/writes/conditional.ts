@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util'
 import { messages, ToolError } from '../../../errors.js'
 
 export const NULL_ETAG = 'null_etag'
@@ -18,13 +19,15 @@ export interface RtdbWriter {
 export async function conditionalWrite(
   writer: RtdbWriter,
   path: string,
-  mutate: (current: unknown) => unknown
-): Promise<{ value: unknown; retries: number }> {
-  let current = await writer.read(path)
+  mutate: (current: unknown) => unknown,
+  first?: Versioned
+): Promise<{ value: unknown; retries: number; written: boolean }> {
+  let current = first ?? (await writer.read(path))
   for (let retries = 0; retries <= MAX_REAPPLIES; retries++) {
     const next = mutate(structuredClone(current.value))
+    if (isDeepStrictEqual(next, current.value)) return { value: next, retries, written: false }
     const result = await writer.put(path, next, current.etag, retries)
-    if (result.saved) return { value: next, retries }
+    if (result.saved) return { value: next, retries, written: true }
     current = result.conflict
   }
   throw new ToolError(messages.writeConflict(path, MAX_REAPPLIES + 1))

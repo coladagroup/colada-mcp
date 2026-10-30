@@ -341,7 +341,7 @@ describe('conditionalWrite (P14)', () => {
   it('412, 412, 200 → saved with 3 PUTs, each re-applied on the value of the last 412', async () => {
     const { writer, puts } = stubWriter(['conflict', 'conflict', 'saved'])
     const result = await conditionalWrite(writer, 'plannerBudgets/o1', addRow)
-    expect(result).toEqual({ value: { rows: ['a', 'other2', 'mine'] }, retries: 2 })
+    expect(result).toEqual({ value: { rows: ['a', 'other2', 'mine'] }, retries: 2, written: true })
     expect(puts.map((put) => [put.ifMatch, put.retries])).toEqual([
       ['e0', 0],
       ['e1', 1],
@@ -355,6 +355,22 @@ describe('conditionalWrite (P14)', () => {
       'plannerBudgets/o1 changed 4 times while the MCP wrote it, so the change was not saved.'
     )
     expect(puts).toHaveLength(MAX_REAPPLIES + 1)
+  })
+
+  it('sends no PUT when mutate leaves the value unchanged', async () => {
+    const { writer, puts } = stubWriter(['saved'])
+    const result = await conditionalWrite(writer, 'budgets/p1', (current) => current)
+    expect(result).toEqual({ value: { rows: ['a'] }, retries: 0, written: false })
+    expect(puts).toEqual([])
+  })
+
+  it('starts from a value read before, without a new GET', async () => {
+    const { writer, puts } = stubWriter(['saved'])
+    writer.read = async () => {
+      throw new Error('no read expected')
+    }
+    await conditionalWrite(writer, 'budgets/p1', addRow, { value: { rows: ['b'] }, etag: 'e9' })
+    expect(puts).toEqual([{ value: { rows: ['b', 'mine'] }, ifMatch: 'e9', retries: 0 }])
   })
 
   it('gives mutate a copy, so a failed try leaves nothing behind', async () => {

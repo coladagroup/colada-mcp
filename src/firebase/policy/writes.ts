@@ -156,6 +156,30 @@ export function writeRefusal(tool: WriteTool, op: WriteOp, ctx: WriteContext): W
   return null
 }
 
+export interface PlannedWrite {
+  method: string
+  path: string
+}
+
+export function plannedRefusal(tool: WriteTool, planned: PlannedWrite, workspace: string): WriteRefusal | null {
+  if (planned.method !== 'PUT' && planned.method !== 'PATCH') return 'X4'
+  const entry: Entry = {
+    op: planned.method === 'PUT' ? 'put' : 'patch',
+    segments: splitPath(planned.path),
+    value: null
+  }
+  const reason = pathDenied(entry.segments, workspace)
+  if (reason) return reason
+  const ctx = { workspace, uid: '' }
+  return WRITE_RULES.some((candidate) => candidate.tool === tool && matches(candidate, entry, ctx)) ? null : 'table'
+}
+
+export function checkPlannedWrite(tool: WriteTool, planned: PlannedWrite, workspace: string): void {
+  if (plannedRefusal(tool, planned, workspace) !== null) {
+    throw new ToolError(messages.writePathNotAllowed(planned.method, planned.path, tool))
+  }
+}
+
 export function checkFirebaseWrite(tool: WriteTool, op: WriteOp, ctx: WriteContext): void {
   if (writeRefusal(tool, op, ctx) !== null) {
     throw new ToolError(messages.writePathNotAllowed(op.method, op.path === '' ? '/' : op.path, tool))
@@ -170,9 +194,9 @@ export function checkWritePermission(tool: WriteTool, permissions: ReadonlySet<s
   }
 }
 
-export function checkPersonalInput(tool: WriteTool, input: Record<string, unknown>, allowPersonalData: boolean) {
+export function checkPersonalInput(tool: WriteTool, input: object, allowPersonalData: boolean) {
   if (allowPersonalData) return
-  const field = PERSONAL_INPUT_FIELDS[tool].find((name) => input[name] !== undefined)
+  const field = PERSONAL_INPUT_FIELDS[tool].find((name) => (input as Record<string, unknown>)[name] !== undefined)
   if (field) throw new ToolError(messages.writePersonalField(field))
 }
 
@@ -190,14 +214,23 @@ function entriesOf(op: WriteOp): Entry[] | null {
   }))
 }
 
-function deniedBy(tool: WriteTool, entry: Entry, ctx: WriteContext): WriteRefusal | null {
-  const { segments, value } = entry
+function pathDenied(segments: readonly string[], workspace: string): WriteRefusal | null {
   const [root, ws, node] = segments
   if (root === 'workspaces' && node === 'projects') return 'X1'
   if (root === 'workspaces' && node === 'secrets') return 'X2'
-  if (root === 'workspaces' && node === 'deals') {
-    if (segments[4] === 'costCenter') return 'X3'
-    if (segments.length === 4 && isPlainObject(value) && 'costCenter' in value) return 'X3'
+  if (root === 'workspaces' && node === 'deals' && segments[4] === 'costCenter') return 'X3'
+  if (root === 'workspaces' && ws !== workspace) return 'X8'
+  if (root === 'externalIds' && segments.length !== 2) return 'X9'
+  return null
+}
+
+function deniedBy(tool: WriteTool, entry: Entry, ctx: WriteContext): WriteRefusal | null {
+  const { segments, value } = entry
+  const [root, , node] = segments
+  const byPath = pathDenied(segments, ctx.workspace)
+  if (byPath) return byPath
+  if (root === 'workspaces' && node === 'deals' && segments.length === 4 && isPlainObject(value)) {
+    if ('costCenter' in value) return 'X3'
   }
   if (value === null || value === undefined) return 'X5'
   if (entry.op === 'put' && isEmpty(value)) return 'X6'
@@ -206,9 +239,8 @@ function deniedBy(tool: WriteTool, entry: Entry, ctx: WriteContext): WriteRefusa
   if (isPlainObject(value) && IDENTITY_BODY_FIELDS.some((field) => field in value && value[field] !== ctx.uid)) {
     return 'X7'
   }
-  if (root === 'workspaces' && ws !== ctx.workspace) return 'X8'
   if (root === 'externalIds') {
-    if (segments.length !== 2 || !isPlainObject(value)) return 'X9'
+    if (!isPlainObject(value)) return 'X9'
     const keys = Object.keys(value).sort()
     if (keys.join(',') !== 'source,workspace' || typeof value.source !== 'string') return 'X9'
     if (value.workspace !== ctx.workspace) return 'X9'

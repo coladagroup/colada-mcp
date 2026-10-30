@@ -136,6 +136,9 @@ export const messages = {
   writeLeadHasOffer: (id: string) => `Lead ${id} already has an offer (planner/${id}).`,
   writeBadParentRow: (uid: string, offer: string) => `parentRow "${uid}" is not in the budget of offer ${offer}.`,
   writeBadPosition: (position: number, length: number) => `position ${position} is outside 0..${length}.`,
+  writeTicketEntity: (ticket: string) =>
+    `entity cannot be set for service ticket ${ticket}: service-ticket entries have no budget copy. Nothing was written.`,
+  writeNoFields: () => 'Pass at least one field to change besides key.',
   writeIdentityField: (field: string) => `"${field}" cannot be set. The MCP sets it from your login.`,
   writeUnknownField: (field: string) => `"${field}" is not an input of this tool.`,
   writeFailed: (method: string, path: string, status: number, reason: string | null) =>

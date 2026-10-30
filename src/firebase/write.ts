@@ -3,7 +3,13 @@ import { messages, ToolError } from '../errors.js'
 import type { FirebaseWriteToolContext, WriteRecord } from '../tools/run.js'
 import { NULL_ETAG, type PutResult, type RtdbWriter, type Versioned } from './campaigns/writes/conditional.js'
 import type { FirebaseMethod, FirebaseResponse } from './http.js'
-import { checkFirebaseWrite, checkWritePermission, type WriteTool } from './policy/writes.js'
+import {
+  checkFirebaseWrite,
+  checkPlannedWrite,
+  checkWritePermission,
+  type PlannedWrite,
+  type WriteTool
+} from './policy/writes.js'
 import { openReader, upstreamText } from './read.js'
 import type { FirebaseAccess } from './session.js'
 
@@ -11,20 +17,26 @@ export interface CampaignsWriter extends RtdbWriter {
   workspace: string
   access: () => Promise<FirebaseAccess>
   patch(path: string, body: Record<string, unknown>): Promise<void>
+  documentExists(path: string): Promise<boolean>
 }
 
 const ETAG_HEADER = { 'X-Firebase-ETag': 'true' }
+const FIRESTORE_HOST = 'https://firestore.googleapis.com/v1'
 
 export async function openWriter(
   app: App,
   ctx: FirebaseWriteToolContext,
   tool: WriteTool,
-  target: { realm?: string; workspace?: string }
+  target: { realm?: string; workspace?: string },
+  planned: readonly PlannedWrite[] = []
 ): Promise<CampaignsWriter> {
   const reader = await openReader(app, ctx, { ...target, app: 'campaigns', path: '' })
+  const rootPath = (path: string) => (path.startsWith('/') ? path.slice(1) : `workspaces/${reader.workspace}/${path}`)
+  for (const write of planned) {
+    checkPlannedWrite(tool, { method: write.method, path: rootPath(write.path) }, reader.workspace)
+  }
   const access = await reader.access()
   checkWritePermission(tool, access.permissions, reader.workspace)
-  const rootPath = (path: string) => (path.startsWith('/') ? path.slice(1) : `workspaces/${reader.workspace}/${path}`)
 
   const read = async (path: string): Promise<Versioned> => {
     const response = await reader.send(
@@ -99,6 +111,30 @@ export async function openWriter(
     async patch(path, body) {
       const record = path === '' ? { path: '/', paths: Object.keys(body) } : { path, paths: null }
       await write('PATCH', path, body, { ...record, ifMatch: false, retries: 0 }, null)
+    },
+    async documentExists(path) {
+      const notFound = messages.firebaseNotFound('firestore', path)
+      const documentPath = rootPath(path).split('/').map(encodeURIComponent).join('/')
+      return reader
+        .send(
+          (used) =>
+            app.firebaseHttp.request({
+              url: `${FIRESTORE_HOST}/projects/${used.config.projectId}/databases/(default)/documents/${documentPath}`,
+              bearer: used.idToken,
+              store: 'firestore',
+              path,
+              tooLarge: () => messages.firebaseTooLarge('firestore', path, '')
+            }),
+          'firestore',
+          path
+        )
+        .then(
+          () => true,
+          (err: Error) => {
+            if (err instanceof ToolError && err.message === notFound) return false
+            throw err
+          }
+        )
     }
   }
 

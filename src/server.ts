@@ -9,6 +9,7 @@ import { registerGetApiDoc } from './tools/getApiDoc.js'
 import { registerGetConventions } from './tools/getConventions.js'
 import { registerListWorkspaces } from './tools/listWorkspaces.js'
 import { registerLogout } from './tools/logout.js'
+import { registerTimesheetTools } from './tools/timesheetTools.js'
 
 const { version } = createRequire(import.meta.url)('../package.json') as { version: string }
 
@@ -28,6 +29,7 @@ export function createServer(app: App): McpServer {
   registerRtdbGet(server, app)
   registerFirestoreGet(server, app)
   registerCampaignsBudget(server, app)
+  registerTimesheetTools(server, app)
   registerLogout(server, app)
   return server
 }
