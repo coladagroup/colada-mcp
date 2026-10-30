@@ -8,7 +8,8 @@ export const INSTRUCTIONS = `Colada backoffice API through get_api_doc, api_get 
 - To change a record: read it, take the revision from X-ETag, send the write with If-Match: <revision>. Some routes ignore If-Match (PATCH /api/events/{id}), so a write there can overwrite a colleague's change.
 - Many updates replace more than the fields you send: PATCH /api/events/{id} needs all required fields; an email template PATCH clears sendingTriggers, sendingCondition and visibleIfForSender when they are missing; guest PATCH /guests/{id}, template l10n and form structure are replaced as a whole. Always send the complete record you read, with your change applied.
 - Before a series of writes, and before publishing or unpublishing anything, show the user the planned calls and wait for a yes. Try a bulk change on one record first.
-- Campaigns data (projects, offers, budgets, timesheets) is in Firebase, not in the backoffice API: use rtdb_get, firestore_get and campaigns_budget (read only). Read the "Campaigns data" part of get_conventions first.`
+- Campaigns data (projects, offers, budgets, timesheets) is in Firebase, not in the backoffice API: use rtdb_get, firestore_get and campaigns_budget (read only). Read the "Campaigns data" part of get_conventions first.
+- Campaigns changes go only through the campaigns_* write tools (timesheet entries, offers, leads, budget rows). Read the "Campaigns writes" part of get_conventions first.`
 
 export const CONVENTIONS = `# Colada backoffice API conventions
 
@@ -106,6 +107,21 @@ Hidden data and limits
 - Personal fields (for example timesheet description, project owner and contacts) are removed while personal data is off; removedFields lists their names. Secrets are never returned. A removed field cannot be used in where, fields, groupBy or sum.
 - orderBy, equalTo, startAt, endAt, limitToFirst and limitToLast run in Firebase and need an index ($key always works). They work on a node, not on one record of timesheet, tasks, activities or history. where, fields, groupBy and sum run in the MCP after the download.
 - A download over 10 MB is refused: narrow it with an indexed orderBy and equalTo, or with limits. A result over 500 KB is refused: use fields, where or groupBy.
+
+## Campaigns writes
+
+Six tools change Campaigns data. Each one writes the same nodes and fields as the matching action in the Campaigns app, with your Campaigns permissions.
+- campaigns_add_timesheet_report, campaigns_update_timesheet_report: your own timesheet entries only. With entity the entry is also copied into that budget row; a change of project, entity or date moves the copy.
+- campaigns_create_offer (optionally from a lead), campaigns_update_offer, campaigns_create_lead.
+- campaigns_add_budget_rows: knowledge base, free and group rows in an offer budget, then the offer total and allocated, and history records as the budget table writes them.
+
+Rules
+- There is no undo, no dry run and no delete. Show the user the values first and wait for a yes.
+- owner and other user fields are always you; they cannot be set.
+- Ids you pass (project, entity, offer, lead, costCenter, kbItem, unit, parentRow) must exist in the workspace, or nothing is written.
+- Personal fields (timesheet description, offer person, participants and description, lead name, contact and summary) need personal data on.
+- A change by someone else between read and write is kept: the tool reads again and applies your change on top, at most 3 times.
+- "written" in the output lists every write. When a later write fails after an earlier one was saved, the error says what is saved and what is not. Do not repeat the whole call; read the data and fix only the missing part.
 
 ## Errors from this MCP
 
