@@ -1,4 +1,5 @@
 import { ApiClient } from './api/client.js'
+import { DocMarkers } from './api/docMarkers.js'
 import { fetchRealm } from './api/realmConfig.js'
 import { RealmSession, type SessionDeps } from './auth/session.js'
 import type { CallLog } from './callLog.js'
@@ -21,12 +22,14 @@ export interface RealmContext {
 
 export class App {
   readonly api: ApiClient
+  readonly markers: DocMarkers
   readonly firebaseHttp: FirebaseHttp
   private readonly realms = new Map<string, RealmContext>()
   private realmNames: Promise<string[]> | null = null
 
   constructor(readonly deps: AppDeps) {
     this.api = new ApiClient(deps.fetch)
+    this.markers = new DocMarkers(this.api, deps.now, deps.log)
     this.firebaseHttp = new FirebaseHttp(this.api, deps.fetch)
   }
 
