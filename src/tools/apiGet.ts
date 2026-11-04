@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { App } from '../app.js'
 import { checkRead } from '../policy/index.js'
-import { sendApiCall } from './apiCall.js'
+import { checkWithMarkers, sendApiCall } from './apiCall.js'
 import { apiCallOf, realmShape, runApiTool, workspaceInput } from './run.js'
 
 export function registerApiGet(server: McpServer, app: App) {
@@ -33,7 +33,7 @@ export function registerApiGet(server: McpServer, app: App) {
     },
     (params) =>
       runApiTool(app, 'api_get', params.realm, apiCallOf({ ...params, method: 'GET' }), async (ctx) => {
-        const checked = checkRead(params, app.deps.allowPersonalData)
+        const checked = await checkWithMarkers(app, ctx, params, (allow, markers) => checkRead(params, allow, markers))
         return sendApiCall(app, ctx, params, checked)
       })
   )

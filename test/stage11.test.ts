@@ -21,7 +21,7 @@ async function setup(allowPersonalData = false) {
 
 const sentPaths = (h: Harness) =>
   h.world
-    .backendRequests()
+    .toolRequests()
     .filter((r) => !r.url.pathname.endsWith('/s-workspaces/api/workspaces'))
     .map((r) => `${r.method} ${r.url.pathname}`)
 

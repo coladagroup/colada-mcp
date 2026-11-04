@@ -2,6 +2,7 @@ import { callBackend } from '../api/backend.js'
 import type { App } from '../app.js'
 import { messages } from '../errors.js'
 import { type CheckedRequest, MAX_RESPONSE_BYTES } from '../policy/index.js'
+import type { MarkerIndex } from '../policy/markers.js'
 import { type ApiToolContext, openRealm } from './run.js'
 
 export interface ApiCallInput {
@@ -11,6 +12,18 @@ export interface ApiCallInput {
   path: string
   query?: Record<string, string>
   body?: unknown
+}
+
+export async function checkWithMarkers(
+  app: App,
+  ctx: ApiToolContext,
+  input: ApiCallInput,
+  check: (allowPersonalData: boolean, markers?: MarkerIndex) => CheckedRequest
+): Promise<CheckedRequest> {
+  const checked = check(true)
+  if (app.deps.allowPersonalData) return checked
+  const { session } = await openRealm(app, ctx, input.realm)
+  return check(false, await app.markers.forService(session, input.service))
 }
 
 export async function sendApiCall(app: App, ctx: ApiToolContext, input: ApiCallInput, checked: CheckedRequest) {

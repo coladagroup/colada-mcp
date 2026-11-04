@@ -127,13 +127,13 @@ describe('login and session', () => {
   it('AC2: an expiring access token is refreshed once and the call completes', async () => {
     const h = await setup()
     await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
-    expect(h.world.tokenRequests()).toHaveLength(1)
+    expect(h.world.workspaceTokenRequests()).toHaveLength(1)
 
     h.world.now += h.world.tokenTtl - 29
     const result = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
 
     expect(result.isError).toBe(false)
-    expect(h.world.tokenRequests()).toHaveLength(2)
+    expect(h.world.workspaceTokenRequests()).toHaveLength(2)
     expect(h.opened).toHaveLength(0)
   })
 
@@ -142,7 +142,7 @@ describe('login and session', () => {
     await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     h.world.now += h.world.tokenTtl - 31
     await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
-    expect(h.world.tokenRequests()).toHaveLength(1)
+    expect(h.world.workspaceTokenRequests()).toHaveLength(1)
   })
 
   it('AC2: a backend 401 renews the token and retries once', async () => {
@@ -151,7 +151,7 @@ describe('login and session', () => {
     h.world.issued.length = 0
     const result = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     expect(result.isError).toBe(false)
-    expect(h.world.tokenRequests()).toHaveLength(2)
+    expect(h.world.workspaceTokenRequests()).toHaveLength(2)
   })
 
   it('AC3: a new process with a stored refresh token needs no login', async () => {
@@ -258,10 +258,10 @@ describe('workspaces', () => {
     const h = await setup()
     await h.call('api_get', { workspace: WS_B, ...eventPath(EVENT_B) })
 
-    const tokenRequest = h.world.tokenRequests()[0]
+    const tokenRequest = h.world.workspaceTokenRequests()[0]
     expect(tokenRequest?.form?.get('workspace_id')).toBe(WS_B)
     expect(tokenRequest?.url.search).toBe('')
-    const backend = h.world.backendRequests()[0]
+    const backend = h.world.toolRequests()[0]
     const claims = claimsOf((backend?.headers.authorization ?? '').replace('Bearer ', ''))
     expect(claims.COLADA_WORKSPACE_ID).toBe(WS_B)
   })
@@ -274,7 +274,7 @@ describe('workspaces', () => {
     expect(result.body.error).toBe(
       `No access to workspace ${WS_FOREIGN} in realm default. You are not a member of it, it does not exist, or it belongs to another realm (see list_workspaces).`
     )
-    expect(h.world.backendRequests()).toHaveLength(0)
+    expect(h.world.toolRequests()).toHaveLength(0)
     expect(h.logs.at(-1)?.httpStatus).toBeNull()
   })
 
@@ -284,7 +284,7 @@ describe('workspaces', () => {
     const h = await setup({ world })
     const result = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     expect(result.body.error).toMatch(/^No access to workspace/)
-    expect(h.world.backendRequests()).toHaveLength(0)
+    expect(h.world.toolRequests()).toHaveLength(0)
   })
 
   it('AC5d: a name with no match or several matches lists the candidates and sends no event request', async () => {
@@ -331,9 +331,9 @@ describe('workspaces', () => {
 
     expect(a.body).toMatchObject({ workspace: { id: WS_A }, body: { uid: EVENT_A } })
     expect(b.body).toMatchObject({ workspace: { id: WS_B }, body: { uid: EVENT_B } })
-    expect(h.world.tokenRequests().map((r) => r.form?.get('workspace_id'))).toEqual([WS_A, WS_B])
+    expect(h.world.workspaceTokenRequests().map((r) => r.form?.get('workspace_id'))).toEqual([WS_A, WS_B])
     const claims = h.world
-      .backendRequests()
+      .toolRequests()
       .map((r) => claimsOf((r.headers.authorization ?? '').replace('Bearer ', '')).COLADA_WORKSPACE_ID)
     expect(claims.sort()).toEqual([WS_A, WS_B])
   })
@@ -345,7 +345,7 @@ describe('workspaces', () => {
       h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) }),
       h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     ])
-    expect(h.world.tokenRequests()).toHaveLength(1)
+    expect(h.world.workspaceTokenRequests()).toHaveLength(1)
   })
 })
 
@@ -355,7 +355,7 @@ describe('api_get and backend errors', () => {
     const result = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     expect(result.body.status).toBe(200)
     expect(result.body.body).toEqual({ uid: EVENT_A, title: 'Gala A', nested: { x: [1, 2] } })
-    expect(h.world.backendRequests()[0]?.url.pathname).toBe(`/_gw/s-events/api/events/${EVENT_A}`)
+    expect(h.world.toolRequests()[0]?.url.pathname).toBe(`/_gw/s-events/api/events/${EVENT_A}`)
   })
 
   it('AC11: 403 names the refused path', async () => {

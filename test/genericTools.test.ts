@@ -190,11 +190,6 @@ describe('refusals send nothing (AC21–AC23, AC25–AC27, AC30)', () => {
       'reads or changes secrets'
     ],
     [
-      'personal data',
-      { method: 'PATCH', service: 's-events-guests', path: '/api/events/e1/guests/g1' },
-      'may return personal data'
-    ],
-    [
       'X-Colada header',
       { method: 'PUT', service: 's-events', path: '/api/events/e1', headers: { 'X-Colada-Workspace-Id': WS_B } },
       'Header "X-Colada-Workspace-Id" is not allowed'
@@ -210,6 +205,21 @@ describe('refusals send nothing (AC21–AC23, AC25–AC27, AC30)', () => {
     expect(h.logs.at(-1)?.httpStatus).toBeNull()
   })
 
+  it('api_write personal data sends only the doc load, nothing to the service', async () => {
+    const h = await setup()
+    const result = await h.call('api_write', {
+      workspace: WS_A,
+      method: 'PATCH',
+      service: 's-events-guests',
+      path: '/api/events/e1/guests/g1'
+    })
+    expect(result.body.error).toContain('may return personal data')
+    expect(h.world.toolRequests()).toHaveLength(0)
+    expect(h.world.docRequests().map((r) => r.url.pathname)).toEqual([CATALOG])
+    expect(h.opened).toHaveLength(0)
+    expect(h.logs.at(-1)?.httpStatus).toBeNull()
+  })
+
   it('api_get on a personal-data service is refused with the switch off and sent with it on', async () => {
     const off = await setup()
     const refused = await off.call('api_get', {
@@ -218,7 +228,7 @@ describe('refusals send nothing (AC21–AC23, AC25–AC27, AC30)', () => {
       path: '/api/events/e1/guests'
     })
     expect(refused.body.error).toContain('COLADA_ALLOW_PERSONAL_DATA=true')
-    expect(off.world.requests).toHaveLength(0)
+    expect(off.world.toolRequests()).toHaveLength(0)
 
     const on = await setup({ allowPersonalData: true })
     on.world.backendRaw.set('/_gw/s-events-guests/api/events/e1/guests', () => json(200, []))
@@ -240,7 +250,7 @@ describe('refusals send nothing (AC21–AC23, AC25–AC27, AC30)', () => {
     expect(result.body.error).toBe(
       `No access to workspace ${WS_FOREIGN} in realm default. You are not a member of it, it does not exist, or it belongs to another realm (see list_workspaces).`
     )
-    expect(h.world.backendRequests()).toHaveLength(0)
+    expect(h.world.toolRequests()).toHaveLength(0)
   })
 })
 
