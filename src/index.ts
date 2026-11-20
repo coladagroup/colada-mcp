@@ -25,6 +25,7 @@ const app = new App({
   now: () => Date.now() / 1000,
   log,
   callLog: fileCallLog(),
+  pid: process.pid,
   openBrowser: async (url) => {
     const child = await open(url)
     child.on('error', () => undefined)

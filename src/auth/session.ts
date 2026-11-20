@@ -1,4 +1,4 @@
-import { messages, ToolError } from '../errors.js'
+import { fail } from '../errors.js'
 import { decodeClaims, expiresAt, userOf } from './jwt.js'
 import { type LoginDeps, startLogin } from './login.js'
 import { postToken, type TokenResult } from './tokenEndpoint.js'
@@ -28,6 +28,7 @@ export class RealmSession {
   private login: LoginAttempt | null = null
   private generation = 0
   private lastUser: string | null = null
+  private endsAt: number | null | undefined
   private readonly endListeners: Array<() => void> = []
 
   constructor(
@@ -38,6 +39,17 @@ export class RealmSession {
 
   user(): string | null {
     return this.lastUser
+  }
+
+  knownEndsAt(): number | null {
+    return this.endsAt ?? null
+  }
+
+  async sessionEndsAt(): Promise<number | null> {
+    if (this.endsAt !== undefined) return this.endsAt
+    const stored = await this.deps.store.get(this.host)
+    const exp = stored ? expiresAt(decodeClaims(stored)) : 0
+    return exp > 0 ? exp : null
   }
 
   onEnd(listener: () => void) {
@@ -57,7 +69,7 @@ export class RealmSession {
   }
 
   async end(): Promise<never> {
-    if (this.login) throw new ToolError(messages.loginInProgress())
+    if (this.login) throw fail.loginInProgress()
     await this.clear()
     return this.beginLogin()
   }
@@ -79,11 +91,12 @@ export class RealmSession {
   private forget() {
     this.generation++
     this.tokens.clear()
+    this.endsAt = undefined
     for (const listener of this.endListeners) listener()
   }
 
   private token(key: string, workspaceId: string | null, minValidity: number): Promise<string> {
-    if (this.login) return Promise.reject(new ToolError(messages.loginInProgress()))
+    if (this.login) return Promise.reject(fail.loginInProgress())
     const cached = this.tokens.get(key)
     if (cached && cached.exp - this.deps.now() >= minValidity) return Promise.resolve(cached.token)
     const running = this.inflight.get(key)
@@ -100,7 +113,7 @@ export class RealmSession {
   }
 
   private async requestToken(key: string, workspaceId: string | null): Promise<string> {
-    if (this.login) throw new ToolError(messages.loginInProgress())
+    if (this.login) throw fail.loginInProgress()
     const generation = this.generation
     let refreshToken = await this.deps.store.get(this.host)
     if (!refreshToken) {
@@ -117,17 +130,17 @@ export class RealmSession {
       if (result.status === 400 && result.error === 'invalid_grant') return this.end()
     }
     if (result.status >= 400 && result.status < 500) {
-      throw new ToolError(messages.keycloakRefused(this.host, result.status))
+      throw fail.keycloakRefused(this.host, result.status)
     }
     if (result.status !== 200 || !result.accessToken) {
-      throw new ToolError(messages.keycloakUnreachable(this.host, result.status))
+      throw fail.keycloakUnreachable(this.host, result.status)
     }
-    if (generation !== this.generation) throw new ToolError(messages.loggedOut())
+    if (generation !== this.generation) throw fail.loggedOut()
 
     await this.accept(result, generation)
     const claims = decodeClaims(result.accessToken)
     if (workspaceId !== null && claims.COLADA_WORKSPACE_ID !== workspaceId) {
-      throw new ToolError(messages.noAccess(workspaceId, this.realm))
+      throw fail.noAccess(workspaceId, this.realm)
     }
     this.tokens.set(key, { token: result.accessToken, exp: expiresAt(claims) })
     return result.accessToken
@@ -139,7 +152,7 @@ export class RealmSession {
     try {
       return await postToken(this.deps.fetch, this.host, this.realm, params)
     } catch {
-      throw new ToolError(messages.keycloakUnreachable(this.host, null))
+      throw fail.keycloakUnreachable(this.host, null)
     }
   }
 
@@ -148,14 +161,16 @@ export class RealmSession {
       await this.deps.store.set(this.host, result.refreshToken)
       if (generation !== this.generation) {
         await this.deps.store.delete(this.host)
-        throw new ToolError(messages.loggedOut())
+        throw fail.loggedOut()
       }
+      const lifetime = result.refreshExpiresIn ?? 0
+      this.endsAt = lifetime > 0 ? this.deps.now() + lifetime : null
     }
     if (result.accessToken) this.lastUser = userOf(decodeClaims(result.accessToken))
   }
 
   private async beginLogin(): Promise<never> {
-    if (this.login) throw new ToolError(messages.loginInProgress())
+    if (this.login) throw fail.loginInProgress()
     const generation = this.generation
     const attempt: LoginAttempt = { close: () => undefined }
     this.login = attempt
@@ -183,9 +198,9 @@ export class RealmSession {
     }
     if (this.generation !== generation) {
       login.close()
-      throw new ToolError(messages.loggedOut())
+      throw fail.loggedOut()
     }
     attempt.close = login.close
-    throw new ToolError(messages.loginOpened(this.realm, this.host, login.url))
+    throw fail.loginOpened(this.realm, this.host, login.url)
   }
 }

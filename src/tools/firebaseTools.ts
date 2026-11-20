@@ -2,7 +2,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { App } from '../app.js'
 import type { FirebaseCall } from '../callLog.js'
-import { readBudget, readFirestore, readRtdb } from '../firebase/read.js'
+import { readBudget, readFirestore, readRtdb, searchKnowledgeBase } from '../firebase/read.js'
+import { selectInput } from '../select.js'
 import { realmShape, runFirebaseTool, workspaceInput } from './run.js'
 
 const appInput = z.enum(['campaigns']).describe('Firebase app. Only "campaigns" today.')
@@ -56,7 +57,10 @@ export function registerRtdbGet(server: McpServer, app: App) {
           .describe(
             'Group records by fields; add ":day", ":week", ":month" or ":year" to a date field, e.g. "date:month".'
           ),
-        sum: z.array(fieldPath).max(10).optional().describe('Fields to sum per group, e.g. ["hours", "minutes"].')
+        sum: z.array(fieldPath).max(10).optional().describe('Fields to sum per group, e.g. ["hours", "minutes"].'),
+        select: selectInput.describe(
+          'Keep only these paths of "data", after hidden fields are removed; "*" stands for every key of a map or item of a list, for example ["*.name", "*.list.*.uid"]. Not with shallow, groupBy or sum.'
+        )
       },
       annotations: { readOnlyHint: true }
     },
@@ -127,7 +131,36 @@ export function registerCampaignsBudget(server: McpServer, app: App) {
   )
 }
 
+export function registerKbSearch(server: McpServer, app: App) {
+  server.registerTool(
+    'campaigns_kb_search',
+    {
+      description:
+        'Searches the Campaigns knowledge base (the catalogue for budget rows) at any depth. Matches a part of the name or of the PDF description, ignoring case. Returns per item the uid (use it as kbItem in campaigns_add_budget_rows), the name, the names of its parent groups, the unit and the price per currency, and the number of all matches.',
+      inputSchema: {
+        ...realmShape(app),
+        workspace: workspaceInput,
+        query: z.string().min(1).max(200).describe('Part of the name, for example "beamer".'),
+        limit: z.number().int().min(1).max(200).optional().describe('Most items returned. Default 20.')
+      },
+      annotations: { readOnlyHint: true }
+    },
+    (params) => {
+      const call: FirebaseCall = {
+        app: 'campaigns',
+        store: 'rtdb',
+        path: 'knowledgeBase',
+        query: params.limit === undefined ? {} : { limit: params.limit }
+      }
+      return runFirebaseTool(app, 'campaigns_kb_search', params.realm, call, (ctx) =>
+        searchKnowledgeBase(app, ctx, params)
+      )
+    }
+  )
+}
+
 const LOGGED_OPTIONS = [
+  'select',
   'shallow',
   'orderBy',
   'equalTo',

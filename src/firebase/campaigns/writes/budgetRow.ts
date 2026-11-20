@@ -1,4 +1,4 @@
-import { messages, ToolError } from '../../../errors.js'
+import { fail } from '../../../errors.js'
 import {
   type BudgetRow,
   calculate,
@@ -14,7 +14,7 @@ const LINEAR_FEE_MODE = 'linear'
 const INTERNAL_SERVICE = 'internal'
 const RESERVE_EFFORT = 'reserve'
 
-interface RowFields {
+export interface RowFields {
   name?: string
   pdfDescription?: string
   price?: number
@@ -47,6 +47,13 @@ export interface Edit {
   field: string
   from: unknown
   to: unknown
+  action?: 'updated' | 'itemRemoved'
+}
+
+export interface Located {
+  row: Fields
+  siblings: Fields[]
+  parent: Fields | null
 }
 
 function pickCurrency(content: Fields, field: string, currency: string) {
@@ -107,7 +114,7 @@ function tableFields(input: RowFields): Fields {
   })
 }
 
-function applyEdits(row: Fields, input: RowFields, edits: Edit[]): Fields {
+export function applyEdits(row: Fields, input: RowFields, edits: Edit[]): Fields {
   if (input.name !== undefined && input.name !== row.name) {
     edits.push({ item: row.name ?? '', field: 'name', from: row.name ?? '', to: input.name })
     row.name = input.name
@@ -153,18 +160,54 @@ function findRow(rows: Fields[], uid: string): Fields | null {
   return null
 }
 
+export function locateRow(rows: Fields[], uid: string, parent: Fields | null = null): Located | null {
+  for (const row of rows) {
+    if (row.uid === uid) return { row, siblings: rows, parent }
+    if (row.subRows == null) continue
+    const subRows = parseBudgetData(row.subRows) as Fields[]
+    row.subRows = subRows
+    const found = locateRow(subRows, uid, row)
+    if (found) return found
+  }
+  return null
+}
+
+export function reportCount(row: Fields): number {
+  const reports = (row.content as Fields | undefined)?.reports
+  const own =
+    reports !== null && typeof reports === 'object'
+      ? Object.values(reports).reduce<number>((sum, list) => sum + (Array.isArray(list) ? list.length : 0), 0)
+      : 0
+  return own + (parseBudgetData(row.subRows) as Fields[]).reduce((sum, child) => sum + reportCount(child), 0)
+}
+
+export function isBlankRow(row: Fields): boolean {
+  const content = (row.content ?? {}) as Fields
+  return (
+    (row.name ?? '') === '' &&
+    !content.price &&
+    parseBudgetData(row.subRows).length === 0 &&
+    reportCount(row) === 0 &&
+    row.ref === undefined
+  )
+}
+
+export function containsRow(row: Fields, uid: string): boolean {
+  return locateRow([row], uid) !== null
+}
+
 export function insertRows(current: unknown, built: Built[], offer: string): { list: Fields[]; places: Place[] } {
   const list = parseBudgetData(current) as Fields[]
   const places = built.map(({ row, parentRow, position }) => {
     let target = list
     if (parentRow !== undefined) {
       const parent = findRow(list, parentRow)
-      if (!parent) throw new ToolError(messages.writeBadParentRow(parentRow, offer))
+      if (!parent) throw fail.writeBadParentRow(parentRow, offer)
       target = parseBudgetData(parent.subRows) as Fields[]
       parent.subRows = target
     }
     const index = position ?? target.length
-    if (index > target.length) throw new ToolError(messages.writeBadPosition(index, target.length))
+    if (index > target.length) throw fail.writeBadPosition(index, target.length)
     target.splice(index, 0, row)
     return { parentRow: parentRow ?? null, position: index }
   })

@@ -1,8 +1,10 @@
 import type { App } from '../app.js'
-import { messages, ToolError } from '../errors.js'
+import { fail, messages, ToolError } from '../errors.js'
 import type { FirebaseWriteToolContext, WriteRecord } from '../tools/run.js'
 import { NULL_ETAG, type PutResult, type RtdbWriter, type Versioned } from './campaigns/writes/conditional.js'
 import type { FirebaseMethod, FirebaseResponse } from './http.js'
+import { redact } from './policy/redact.js'
+import { CAMPAIGNS_RULES } from './policy/tables.js'
 import {
   checkFirebaseWrite,
   checkPlannedWrite,
@@ -62,17 +64,27 @@ export async function openWriter(
     ifMatch: string | null
   ): Promise<FirebaseResponse> => {
     const entry: WriteRecord = { app: 'campaigns', store: 'rtdb', method, ...record, httpStatus: null }
-    ctx.writes.push(entry)
     const used = await reader.access()
     checkFirebaseWrite(
       tool,
       { method, path: path === '' ? '' : rootPath(path), body: rootBody(path, body) },
       {
         workspace: reader.workspace,
-        uid: used.uid
+        uid: used.uid,
+        checkedUsers: ctx.checkedUsers
       }
     )
+    ctx.writes.push(entry)
     const shown = record.path
+    if (ctx.preview) {
+      ctx.captured.push({
+        method,
+        path: shown,
+        ...(ifMatch === null ? {} : { ifMatch: true }),
+        body: app.deps.allowPersonalData ? body : withoutPersonalData(path, body)
+      })
+      return { status: 200, body }
+    }
     const send = (current: FirebaseAccess) =>
       app.firebaseHttp.request({
         url: rtdbUrl(current, path === '' ? '' : rootPath(path)),
@@ -92,10 +104,10 @@ export async function openWriter(
       entry.httpStatus = response.status
       ctx.state.httpStatus = response.status
     }
-    if (response.status === 401 || response.status === 403) throw new ToolError(messages.writeRefused(shown))
+    if (response.status === 401 || response.status === 403) throw fail.writeRefused(shown)
     if (response.conflict) return response
     if (response.status < 200 || response.status >= 300) {
-      throw new ToolError(messages.writeFailed(method, shown, response.status, upstreamText(response)))
+      throw fail.writeFailed(method, shown, response.status, upstreamText(response))
     }
     return response
   }
@@ -142,6 +154,21 @@ export async function openWriter(
     if (path !== '' || body === null || typeof body !== 'object') return body
     return Object.fromEntries(Object.entries(body).map(([key, value]) => [rootPath(key), value]))
   }
+}
+
+function withoutPersonalData(path: string, body: unknown): unknown {
+  if (path !== '') return redactedAt(path, body)
+  return Object.fromEntries(
+    Object.entries(body as Record<string, unknown>).map(([key, value]) => [key, redactedAt(key, value)])
+  )
+}
+
+function redactedAt(path: string, value: unknown): unknown {
+  const [node, ...rest] = path.split('/')
+  const rule = CAMPAIGNS_RULES.find((candidate) => candidate.store === 'rtdb' && candidate.node === node)
+  if (!rule) return value
+  if (rule.group === 'personal') return null
+  return redact(value, rest, rule, false).value
 }
 
 function rtdbUrl(access: FirebaseAccess, rootPath: string): string {

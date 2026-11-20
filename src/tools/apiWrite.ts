@@ -2,15 +2,15 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { App } from '../app.js'
 import { checkWrite } from '../policy/index.js'
-import { sendApiCall } from './apiCall.js'
-import { apiCallOf, realmShape, runApiTool, workspaceInput } from './run.js'
+import { previewApiCall, sendApiCall } from './apiCall.js'
+import { apiCallOf, previewInput, realmShape, runApiTool, workspaceInput } from './run.js'
 
 export function registerApiWrite(server: McpServer, app: App) {
   server.registerTool(
     'api_write',
     {
       description:
-        'Changes data in a Colada backoffice service: POST, PUT or PATCH with a JSON body (DELETE only for the few allowlisted routes, such as unpublishing a registration form), in one workspace, with your own roles. The user approves each call. Read the object with api_get first and pass its X-ETag value as If-Match. Routes that delete data are blocked; deleting data stays a manual backoffice action. Returns the status, the JSON body and the headers Content-Range, ETag, X-ETag and Location.',
+        'Changes data in a Colada backoffice service: POST, PUT or PATCH with a JSON body (DELETE only for the few allowlisted routes, such as unpublishing a registration form), in one workspace, with your own roles. The user approves each call. Read the object with api_get first and pass its X-ETag value as If-Match. Routes that delete data are blocked; deleting data stays a manual backoffice action. Returns the status, the JSON body and the headers Content-Range, ETag, X-ETag and Location. With preview: true it runs the checks and returns the request without sending it.',
       inputSchema: {
         ...realmShape(app),
         workspace: workspaceInput,
@@ -24,13 +24,15 @@ export function registerApiWrite(server: McpServer, app: App) {
           .describe(
             'Only Range and If-Match. For an update, pass If-Match with the X-ETag of your last api_get of the object.'
           ),
-        body: z.unknown().optional().describe('JSON request body.')
+        body: z.unknown().optional().describe('JSON request body.'),
+        preview: previewInput
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }
     },
     (params) =>
       runApiTool(app, 'api_write', params.realm, apiCallOf(params), async (ctx) => {
         const checked = checkWrite(params.method, params, app.deps.allowPersonalData)
+        if (params.preview === true) return previewApiCall(app, ctx, params, checked)
         return sendApiCall(app, ctx, params, checked)
       })
   )

@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from 'node:util'
-import { messages, ToolError } from '../../../errors.js'
+import { fail } from '../../../errors.js'
 
 export const NULL_ETAG = 'null_etag'
 export const MAX_REAPPLIES = 3
@@ -30,5 +30,5 @@ export async function conditionalWrite(
     if (result.saved) return { value: next, retries, written: true }
     current = result.conflict
   }
-  throw new ToolError(messages.writeConflict(path, MAX_REAPPLIES + 1))
+  throw fail.writeConflict(path, MAX_REAPPLIES + 1)
 }

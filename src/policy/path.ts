@@ -1,10 +1,10 @@
-import { messages, ToolError } from '../errors.js'
+import { fail } from '../errors.js'
 
 const PATH_CHARACTERS = /^[A-Za-z0-9\-._~!$&'()*+,;=:@/%]*$/
 const ENCODED_SEPARATOR = /%2f|%2e|%5c/i
 
 export function checkPath(path: string): string {
-  const refuse = (reason: string) => new ToolError(messages.pathNotAllowed(path, reason))
+  const refuse = (reason: string) => fail.pathNotAllowed(path, reason)
   if (!path.startsWith('/api/')) throw refuse('it must start with /api/')
   if (path.includes('?') || path.includes('#')) throw refuse('it must not contain "?" or "#"')
   if (!PATH_CHARACTERS.test(path)) {

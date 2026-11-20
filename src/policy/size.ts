@@ -1,1 +1,2 @@
 export const MAX_RESPONSE_BYTES = 512_000
+export const MAX_GET_DOWNLOAD_BYTES = 10_000_000

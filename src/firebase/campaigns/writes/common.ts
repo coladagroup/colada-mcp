@@ -1,5 +1,5 @@
 import type { App } from '../../../app.js'
-import { messages, ToolError } from '../../../errors.js'
+import { fail, ToolError } from '../../../errors.js'
 import type { FirebaseWriteToolContext } from '../../../tools/run.js'
 import { splitPath } from '../../policy/check.js'
 import { campaignsRole } from '../../policy/rows.js'
@@ -18,7 +18,7 @@ export interface Session {
 }
 
 export function assertId(id: string) {
-  if (splitPath(id).length !== 1) throw new ToolError(messages.firebasePath(id, 'the id must be one path segment'))
+  if (splitPath(id).length !== 1) throw fail.firebasePath(id, 'the id must be one path segment')
 }
 
 export function defined<T extends object>(fields: T): Partial<T> {
@@ -53,7 +53,7 @@ export function partial(
   if (!(err instanceof ToolError)) throw err
   const saved = written(ctx).map((write) => write.path)
   if (saved.length === 0) throw err
-  throw new ToolError(messages.writePartial(tool, saved, notSaved, `${state} Cause: ${err.message}`))
+  throw fail.writePartial(tool, saved, notSaved, `${state} Cause: ${err.message}`)
 }
 
 export function nowJson(app: App): string {

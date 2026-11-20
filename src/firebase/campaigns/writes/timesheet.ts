@@ -1,4 +1,4 @@
-import { messages, ToolError } from '../../../errors.js'
+import { fail } from '../../../errors.js'
 import { type BudgetRow, parseBudgetData } from '../budgetMath.js'
 
 export interface ReportFields {
@@ -32,8 +32,8 @@ export function checkReportDate(date: string, today: string): void {
   const match = DATE.exec(date)
   const [year, month, day] = (match?.slice(1) ?? []).map(Number)
   const real = match && new Date(Date.UTC(year ?? 0, (month ?? 0) - 1, day ?? 0)).toISOString().startsWith(date)
-  if (!real) throw new ToolError(messages.writeBadDate('date must be yyyy-MM-dd'))
-  if (date > today) throw new ToolError(messages.writeBadDate(`date ${date} is in the future`))
+  if (!real) throw fail.writeBadDate('date must be yyyy-MM-dd')
+  if (date > today) throw fail.writeBadDate(`date ${date} is in the future`)
 }
 
 function defined(fields: ReportFields): Entry {
@@ -97,7 +97,7 @@ function withReports(row: BudgetRow, reports: Record<string, unknown>): BudgetRo
 }
 
 function requireRow(list: BudgetRow[], place: CopyPlace, workspace: string): void {
-  if (!hasRow(list, place.row)) throw new ToolError(messages.writeMissingReference('Budget row', place.row, workspace))
+  if (!hasRow(list, place.row)) throw fail.writeMissingReference('Budget row', place.row, workspace)
 }
 
 export function withoutCopy(list: BudgetRow[], key: string): BudgetRow[] {

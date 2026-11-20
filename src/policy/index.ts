@@ -9,7 +9,7 @@ import { checkService } from './service.js'
 import type { Method } from './tables.js'
 
 export { checkService } from './service.js'
-export { MAX_RESPONSE_BYTES } from './size.js'
+export { MAX_GET_DOWNLOAD_BYTES, MAX_RESPONSE_BYTES } from './size.js'
 
 const PROJECTION_SUFFIX = /:\([^/]*\)\/?$/
 

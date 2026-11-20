@@ -2,7 +2,7 @@ import { callBackend } from '../api/backend.js'
 import type { App } from '../app.js'
 import { messages } from '../errors.js'
 import { type CheckedRequest, MAX_RESPONSE_BYTES } from '../policy/index.js'
-import { type ApiToolContext, openRealm } from './run.js'
+import { type ApiToolContext, openRealm, type ToolContext } from './run.js'
 
 export interface ApiCallInput {
   realm?: string
@@ -13,7 +13,35 @@ export interface ApiCallInput {
   body?: unknown
 }
 
-export async function sendApiCall(app: App, ctx: ApiToolContext, input: ApiCallInput, checked: CheckedRequest) {
+const API_PREVIEW_NOTE =
+  'Preview: nothing was sent and no write budget was used. Call api_write again without preview to send this request.'
+
+export function plannedRequest(host: string, input: ApiCallInput, checked: CheckedRequest) {
+  return {
+    method: checked.method,
+    host,
+    service: input.service,
+    path: input.path,
+    query: input.query ?? {},
+    headers: Object.keys(checked.headers),
+    body: input.body ?? null
+  }
+}
+
+export async function previewApiCall(app: App, ctx: ApiToolContext, input: ApiCallInput, checked: CheckedRequest) {
+  ctx.preview = true
+  const { session, directory } = await openRealm(app, ctx, input.realm)
+  ctx.workspace = await directory.resolve(input.workspace, { httpStatus: null })
+  return { preview: true, note: API_PREVIEW_NOTE, request: plannedRequest(session.host, input, checked) }
+}
+
+export async function sendApiCall(
+  app: App,
+  ctx: ToolContext,
+  input: ApiCallInput,
+  checked: CheckedRequest,
+  maxBytes = MAX_RESPONSE_BYTES
+) {
   const { session, directory } = await openRealm(app, ctx, input.realm)
   const workspace = await directory.resolve(input.workspace, ctx.state)
   ctx.workspace = workspace
@@ -28,7 +56,7 @@ export async function sendApiCall(app: App, ctx: ApiToolContext, input: ApiCallI
       query: queryString(input.query ?? {}),
       headers: checked.headers,
       body: input.body,
-      maxBytes: MAX_RESPONSE_BYTES,
+      maxBytes,
       notFound: messages.notFound(checked.method, path, workspace.id)
     },
     ctx.state

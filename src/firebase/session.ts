@@ -2,7 +2,7 @@ import { type CallState, callBackend } from '../api/backend.js'
 import type { ApiClient } from '../api/client.js'
 import { decodeClaims, expiresAt } from '../auth/jwt.js'
 import type { RealmSession } from '../auth/session.js'
-import { messages, ToolError } from '../errors.js'
+import { fail, messages } from '../errors.js'
 import { type FirebaseConfig, parseFirebaseConfig } from './config.js'
 import type { FirebaseHttp } from './http.js'
 
@@ -43,7 +43,7 @@ export class FirebaseSessions {
     const generation = this.generation
     const request = this.mint(workspaceId, app, state)
       .then((access) => {
-        if (generation !== this.generation) throw new ToolError(messages.loggedOut())
+        if (generation !== this.generation) throw fail.loggedOut()
         this.cache.set(key, access)
         return access
       })
@@ -82,11 +82,11 @@ export class FirebaseSessions {
     )
     const customToken = (tokenResponse.body as { value?: unknown } | null)?.value
     if (typeof customToken !== 'string' || customToken === '') {
-      throw new ToolError(messages.firebaseSignInFailed(tokenResponse.status, null))
+      throw fail.firebaseSignInFailed(tokenResponse.status, null)
     }
     const idToken = await this.signIn(config, customToken)
     const claims = decodeClaims(idToken)
-    if (claims.COLADA_WORKSPACE_ID !== workspaceId) throw new ToolError(messages.firebaseOtherWorkspace())
+    if (claims.COLADA_WORKSPACE_ID !== workspaceId) throw fail.firebaseOtherWorkspace()
     const keycloakClaims = decodeClaims(await this.session.workspaceToken(workspaceId))
     return {
       config,
@@ -109,7 +109,7 @@ export class FirebaseSessions {
     })
     const idToken = (response.body as { idToken?: unknown } | null)?.idToken
     if (response.status !== 200 || typeof idToken !== 'string' || idToken === '') {
-      throw new ToolError(messages.firebaseSignInFailed(response.status, errorCode(response.body)))
+      throw fail.firebaseSignInFailed(response.status, errorCode(response.body))
     }
     return idToken
   }
@@ -122,7 +122,7 @@ export class FirebaseSessions {
       state
     )
     if (!Array.isArray(response.body) || !response.body.every((item) => typeof item === 'string')) {
-      throw new ToolError(messages.firebasePermissionsUnreadable(workspaceId))
+      throw fail.firebasePermissionsUnreadable(workspaceId)
     }
     return new Set(response.body)
   }

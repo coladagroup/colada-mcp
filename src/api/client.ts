@@ -1,4 +1,5 @@
-import { messages, ResponseTooLargeError, ToolError } from '../errors.js'
+import { fail, messages, ResponseTooLargeError, type ToolError } from '../errors.js'
+import { MAX_RESPONSE_BYTES } from '../policy/size.js'
 
 export interface ApiResponse {
   status: number
@@ -54,13 +55,22 @@ export class ApiClient {
     }
   }
 
+  remainingWrites(): number {
+    this.forgetOldWrites()
+    return MAX_WRITES_PER_MINUTE - this.writeTimes.length
+  }
+
   takeWriteBudget(method: string, path: string) {
-    const minuteAgo = this.now() - 60_000
-    while (this.writeTimes.length && (this.writeTimes[0] ?? 0) <= minuteAgo) this.writeTimes.shift()
+    this.forgetOldWrites()
     if (this.writeTimes.length >= MAX_WRITES_PER_MINUTE) {
-      throw new ToolError(messages.writeBudget(method, path, MAX_WRITES_PER_MINUTE))
+      throw fail.writeBudget(method, path, MAX_WRITES_PER_MINUTE)
     }
     this.writeTimes.push(this.now())
+  }
+
+  private forgetOldWrites() {
+    const minuteAgo = this.now() - 60_000
+    while (this.writeTimes.length && (this.writeTimes[0] ?? 0) <= minuteAgo) this.writeTimes.shift()
   }
 
   private async acquireSlot() {
@@ -104,7 +114,7 @@ export class ApiClient {
         signal: AbortSignal.timeout(this.timeoutMs)
       })
     } catch {
-      throw new ToolError(write ? messages.writeNoResponse(method, path) : messages.failed(method, path, null))
+      throw write ? fail.writeNoResponse(method, path) : fail.failed(method, path, null)
     }
     options.onStatus?.(response.status)
     if (response.status < 200 || response.status >= 300) {
@@ -128,10 +138,10 @@ export class ApiClient {
 }
 
 async function readBody(response: Response, maxBytes: number, method: string, path: string): Promise<BodyResult> {
-  const tooLarge = {
-    reason: 'it is larger than 500 KB',
-    error: new ResponseTooLargeError(messages.tooLarge(method, path))
-  }
+  const tooLarge =
+    maxBytes > MAX_RESPONSE_BYTES
+      ? { reason: 'it is larger than 10 MB', error: new ResponseTooLargeError(messages.downloadTooLarge(method, path)) }
+      : { reason: 'it is larger than 500 KB', error: new ResponseTooLargeError(messages.tooLarge(method, path)) }
   if (Number(response.headers.get('content-length') ?? 0) > maxBytes) {
     await response.body?.cancel().catch(() => undefined)
     return tooLarge
@@ -152,7 +162,7 @@ async function readBody(response: Response, maxBytes: number, method: string, pa
         chunks.push(value)
       }
     } catch {
-      return { reason: 'it could not be read', error: new ToolError(messages.failed(method, path, null)) }
+      return { reason: 'it could not be read', error: fail.failed(method, path, null) }
     }
   }
   const text = new TextDecoder().decode(Buffer.concat(chunks))
@@ -162,14 +172,14 @@ async function readBody(response: Response, maxBytes: number, method: string, pa
   if (mediaType === 'application/yaml' || mediaType === 'text/yaml') return { body: text }
   if (mediaType !== 'application/json') {
     const shown = contentType || 'no content type'
-    return { reason: `it is ${shown}, not JSON`, error: new ToolError(messages.notJson(method, path, shown)) }
+    return { reason: `it is ${shown}, not JSON`, error: fail.notJson(method, path, shown) }
   }
   try {
     return { body: JSON.parse(text) }
   } catch {
     return {
       reason: 'it is not valid JSON',
-      error: new ToolError(messages.invalidJson(method, path, response.status))
+      error: fail.invalidJson(method, path, response.status)
     }
   }
 }

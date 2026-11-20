@@ -1,4 +1,4 @@
-import { messages, ToolError } from '../../errors.js'
+import { fail } from '../../errors.js'
 import { APP_VIEW, CAMPAIGNS_RULES, type NodeRule, REPORTS_VIEW, type Store, TIMESHEET_ME_VIEW } from './tables.js'
 
 export type TimesheetMode = 'all' | 'own'
@@ -21,7 +21,7 @@ function hasControlCharacter(segment: string): boolean {
 }
 
 export function splitPath(path: string): string[] {
-  const refuse = (reason: string) => new ToolError(messages.firebasePath(path, reason))
+  const refuse = (reason: string) => fail.firebasePath(path, reason)
   if (path === '') throw refuse('it is empty; the workspace root cannot be read')
   if (Buffer.byteLength(path) > MAX_PATH_BYTES) throw refuse('it is longer than 768 bytes')
   const segments = path.split('/')
@@ -44,14 +44,14 @@ export function checkFirebaseTarget(store: Store, path: string, allowPersonalDat
   const segments = splitPath(path)
   const [node, ...rest] = segments
   const rule = CAMPAIGNS_RULES.find((candidate) => candidate.store === store && candidate.node === node)
-  if (!rule) throw new ToolError(messages.firebasePath(path, `"${node}" is not on the ${store} allowlist`))
+  if (!rule) throw fail.firebasePath(path, `"${node}" is not on the ${store} allowlist`)
   if (store === 'firestore' && rest.length > 1) {
-    throw new ToolError(messages.firebasePath(path, 'only a collection or one document of it can be read'))
+    throw fail.firebasePath(path, 'only a collection or one document of it can be read')
   }
   if ((rule.link?.by === 'field' || rule.ownRows) && rest.length > 1) {
-    throw new ToolError(messages.firebasePath(path, `read the whole record ${node}/<id>, not a part of it`))
+    throw fail.firebasePath(path, `read the whole record ${node}/<id>, not a part of it`)
   }
-  if (rule.group === 'personal' && !allowPersonalData) throw new ToolError(messages.firebasePersonalNode(rule.node))
+  if (rule.group === 'personal' && !allowPersonalData) throw fail.firebasePersonalNode(rule.node)
   return { rule, segments, rest }
 }
 
@@ -62,10 +62,10 @@ export function checkFirebaseAccess(
 ): CheckedPath {
   const { rule } = target
   if (!permissions.has(APP_VIEW)) {
-    throw new ToolError(messages.firebaseMissingPermission([APP_VIEW], workspace, rule.node))
+    throw fail.firebaseMissingPermission([APP_VIEW], workspace, rule.node)
   }
   if (!rule.permissions.some((permission) => permissions.has(permission))) {
-    throw new ToolError(messages.firebaseMissingPermission(rule.permissions, workspace, rule.node))
+    throw fail.firebaseMissingPermission(rule.permissions, workspace, rule.node)
   }
   return { ...target, timesheetMode: rule.ownRows ? timesheetMode(permissions) : null }
 }

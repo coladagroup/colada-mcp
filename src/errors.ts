@@ -1,6 +1,20 @@
-export class ToolError extends Error {}
+export type ErrorOutcome = 'login_required' | 'refused' | 'backend_error' | 'conflict'
 
-export class ResponseTooLargeError extends ToolError {}
+export class ToolError extends Error {
+  constructor(
+    message: string,
+    readonly outcome: ErrorOutcome = 'backend_error',
+    readonly reason = 'error'
+  ) {
+    super(message)
+  }
+}
+
+export class ResponseTooLargeError extends ToolError {
+  constructor(message: string) {
+    super(message, 'refused', 'tooLarge')
+  }
+}
 
 export const messages = {
   loginOpened: (realm: string, host: string, url: string) =>
@@ -26,7 +40,10 @@ export const messages = {
   writeUnauthorized: (method: string, path: string) =>
     `${method} ${path} was refused (401): the session token was not accepted. The request was not sent again. Call api_write again; the user approves it again.`,
   tooLarge: (method: string, path: string) =>
-    `The response of ${method} ${path} is larger than 500 KB and is not returned. Ask for less: a smaller Range (for example "Range: events 0-20"), a narrower query, or a projection in the path (for example /api/events:(title,start)).`,
+    `The response of ${method} ${path} is larger than 500 KB and is not returned. Ask for less: "select" with only the paths you need (for example ["id", "status"]), a smaller Range (for example "Range: events 0-20"), a narrower query, or a projection in the path (for example /api/events:(title,start)).`,
+  downloadTooLarge: (method: string, path: string) =>
+    `The response of ${method} ${path} is larger than 10 MB and was not downloaded. Ask for less: a smaller Range (for example "Range: events 0-20") or a narrower query.`,
+  badSelect: (path: string, reason: string) => `select path "${path}": ${reason}.`,
   writeBodyNotReturned: (method: string, path: string, status: number, reason: string) =>
     `${method} ${path} succeeded (${status}), but its response body is not returned: ${reason}. The change was applied: do not send it again. Read the object with api_get if you need it.`,
   writeBudget: (method: string, path: string, limit: number) =>
@@ -99,7 +116,7 @@ export const messages = {
   firebaseNoIndex: (child: string, node: string, indexes: string) =>
     `RTDB has no index on "${child}" for ${node}. Use an indexed child (${indexes}) or "where" (filters after a full download).`,
   firebaseResultTooLarge: () =>
-    'The result is larger than 500 KB and is not returned. Use "fields", "where", "groupBy" or a narrower path.',
+    'The result is larger than 500 KB and is not returned. Use "select", "fields", "where", "groupBy" or a narrower path.',
   firebaseNotRecords: (option: string, path: string) =>
     `"${option}" works on a list of records, but ${path} is one record.`,
   firebaseOwnRowsOnly: () =>
@@ -127,6 +144,23 @@ export const messages = {
     `"${field}" is personal data. Writing it needs COLADA_ALLOW_PERSONAL_DATA=true. Nothing was written.`,
   writeMissingReference: (kind: string, id: string, workspace: string) =>
     `${kind} "${id}" does not exist in workspace ${workspace}. Nothing was written.`,
+  writeUnknownCostCenter: (id: string, workspace: string, known: string[], more: number) =>
+    `Cost center "${id}" does not exist in workspace ${workspace}. Nothing was written. ${
+      known.length === 0
+        ? 'The workspace has no cost centers.'
+        : `Cost centers (uid: name): ${known.join('; ')}${more > 0 ? `; and ${more} more (rtdb_get costCenters/list)` : ''}.`
+    }`,
+  writeUnknownUser: (field: string, workspace: string) =>
+    `${field}: no Campaigns user of workspace ${workspace} has this uid or email. Nothing was written.`,
+  usersListForbidden: (field: string) =>
+    `${field} can only be your own uid: your role lacks api:users:list, so the MCP cannot check other users. Nothing was written.`,
+  sessionEndsSoon: (endsAt: string, minutes: number) =>
+    `Your Colada login ends at ${endsAt} (in about ${minutes} min). After that the next call opens the browser login. Finish open writes first.`,
+  previewRequired: (tool: string, host: string) =>
+    `${tool} on ${host} (a prod host) needs a preview first. Call it with preview: true and the same input, check the writes with the user, then call it again with the previewId from that answer within 10 minutes. Nothing was read or written.`,
+  batchItemRefused: (index: number, reason: string) => `Item ${index}: ${reason} Nothing was sent.`,
+  batchBudget: (items: number, remaining: number, limit: number) =>
+    `The batch has ${items} writes, but only ${remaining} of ${limit} writes per minute are left. Nothing was sent. Wait a minute or send fewer items.`,
   writeBadDate: (reason: string) => `${reason}.`,
   writePartial: (tool: string, saved: string[], notSaved: string[], state: string) =>
     `${tool} stopped after a partial write. Saved: ${saved.join(', ')}. Not saved: ${notSaved.join(', ')}. ${state}`,
@@ -137,6 +171,18 @@ export const messages = {
   writeArchived: (id: string) => `Offer ${id} is archived and cannot be changed.`,
   writeLeadHasOffer: (id: string) => `Lead ${id} already has an offer (planner/${id}).`,
   writeBadParentRow: (uid: string, offer: string) => `parentRow "${uid}" is not in the budget of offer ${offer}.`,
+  writeUnknownRow: (uid: string, offer: string) =>
+    `Row "${uid}" is not in the budget of offer ${offer}. Nothing was written.`,
+  writeBadMove: (uid: string) => `Row "${uid}" cannot be moved into itself or its own sub-rows. Nothing was written.`,
+  writeRowHasSubRows: (uid: string) =>
+    `Row "${uid}" has sub-rows. Pass withSubRows: true to remove it together with its sub-rows. Nothing was written.`,
+  writeRowHasReports: (uid: string, name: string, copies: number) =>
+    `Row "${uid}" (${name}) or its sub-rows have ${copies} timesheet copies. Move or change those timesheet entries first, so no copy is left without its row. Nothing was written.`,
+  writeLastRow: (offer: string) =>
+    `The budget of offer ${offer} would have no rows left, and a budget needs at least one row. Add the new rows first (campaigns_add_budget_rows with replaceBlankRow: true replaces the blank row). Nothing was written.`,
+  writeNoBlankRow: (offer: string) =>
+    `replaceBlankRow: the budget of offer ${offer} has no blank row (empty name, no price, no sub-rows, no timesheet copies). Nothing was written.`,
+  writeLeadArchived: (id: string) => `Lead ${id} is archived and cannot be changed.`,
   writeBadPosition: (position: number, length: number) => `position ${position} is outside 0..${length}.`,
   writeTicketEntity: (ticket: string) =>
     `entity cannot be set for service ticket ${ticket}: service-ticket entries have no budget copy. Nothing was written.`,
@@ -147,3 +193,39 @@ export const messages = {
   writeFailed: (method: string, path: string, status: number, reason: string | null) =>
     `${method} ${path} failed (${status})${reason ? `: ${reason}` : ''}. Nothing was written by this request.`
 }
+
+type MessageKey = keyof typeof messages
+
+const OUTCOMES: Partial<Record<MessageKey, ErrorOutcome>> = {
+  loginOpened: 'login_required',
+  loginInProgress: 'login_required',
+  loggedOut: 'login_required',
+  realmUnknown: 'backend_error',
+  failed: 'backend_error',
+  writeUnauthorized: 'backend_error',
+  writeNoResponse: 'backend_error',
+  invalidJson: 'backend_error',
+  notJson: 'backend_error',
+  keycloakUnreachable: 'backend_error',
+  keycloakRefused: 'backend_error',
+  logoutFailed: 'backend_error',
+  firebaseSignInFailed: 'backend_error',
+  firebasePermissionsUnreadable: 'backend_error',
+  firebaseFailed: 'backend_error',
+  writePartial: 'backend_error',
+  writeFailed: 'backend_error',
+  conflict: 'conflict',
+  writeConflict: 'conflict',
+  writeEntryMoved: 'conflict',
+  firebaseAccessChanged: 'conflict'
+}
+
+type Failures = { [K in MessageKey]: (...args: Parameters<(typeof messages)[K]>) => ToolError }
+
+export const fail = Object.fromEntries(
+  Object.entries(messages).map(([key, format]) => [
+    key,
+    (...args: unknown[]) =>
+      new ToolError((format as (...a: unknown[]) => string)(...args), OUTCOMES[key as MessageKey] ?? 'refused', key)
+  ])
+) as Failures

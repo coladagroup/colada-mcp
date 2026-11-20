@@ -1,6 +1,7 @@
 import type { App } from '../app.js'
-import { messages, ToolError } from '../errors.js'
+import { fail, messages } from '../errors.js'
 import { MAX_RESPONSE_BYTES } from '../policy/index.js'
+import { selectPaths } from '../select.js'
 import type { FirebaseToolContext } from '../tools/run.js'
 import { openRealm } from '../tools/run.js'
 import {
@@ -35,7 +36,9 @@ export interface FirebaseTarget {
   path: string
 }
 
-export interface RtdbInput extends FirebaseTarget, RtdbQuery, LocalOps {}
+export interface RtdbInput extends FirebaseTarget, RtdbQuery, LocalOps {
+  select?: string[]
+}
 
 export interface FirestoreInput extends FirebaseTarget {
   pageSize?: number
@@ -74,7 +77,7 @@ export async function openReader(
     const used = await access()
     firebase.drop(workspace.id, target.app)
     const fresh = await firebase.access(workspace.id, target.app, ctx.state)
-    if (!sameAccess(used, fresh)) throw new ToolError(messages.firebaseAccessChanged())
+    if (!sameAccess(used, fresh)) throw fail.firebaseAccessChanged()
     snapshot.current = fresh
     return fresh
   }
@@ -93,13 +96,13 @@ function sender(
       response = await request(await renew())
       ctx.state.httpStatus = response.status
     }
-    if (response.status === 401 || response.status === 403) throw new ToolError(messages.firebaseRefused(path))
-    if (response.status === 404) throw new ToolError(messages.firebaseNotFound(store, path))
+    if (response.status === 401 || response.status === 403) throw fail.firebaseRefused(path)
+    if (response.status === 404) throw fail.firebaseNotFound(store, path)
     if (response.status === 400) {
-      throw new ToolError(messages.firebaseQuery(upstreamText(response) ?? 'refused by Firebase (400)'))
+      throw fail.firebaseQuery(upstreamText(response) ?? 'refused by Firebase (400)')
     }
     if (response.status < 200 || response.status >= 300) {
-      throw new ToolError(messages.firebaseFailed(store, path, response.status))
+      throw fail.firebaseFailed(store, path, response.status)
     }
     return response
   }
@@ -190,7 +193,7 @@ function finish(result: Record<string, unknown>, removed: Set<string>, removedRe
     ...(removedRecords > 0 ? { removedRecords } : {})
   }
   if (Buffer.byteLength(JSON.stringify(output)) > MAX_RESPONSE_BYTES) {
-    throw new ToolError(messages.firebaseResultTooLarge())
+    throw fail.firebaseResultTooLarge()
   }
   return output
 }
@@ -208,7 +211,10 @@ export async function readRtdb(app: App, ctx: FirebaseToolContext, input: RtdbIn
   const { rule, rest } = target
   const ops: LocalOps = { where: input.where, fields: input.fields, groupBy: input.groupBy, sum: input.sum }
   if (input.shallow && hasLocalOps(ops)) {
-    throw new ToolError(messages.firebaseQuery('shallow cannot be combined with where, fields, groupBy or sum'))
+    throw fail.firebaseQuery('shallow cannot be combined with where, fields, groupBy or sum')
+  }
+  if (input.select !== undefined && (input.shallow || input.groupBy?.length || input.sum?.length)) {
+    throw fail.firebaseQuery('select cannot be combined with shallow, groupBy or sum')
   }
   assertOpsUsable(target, ops, allowPersonalData)
   const query: RtdbQuery = {
@@ -220,10 +226,10 @@ export async function readRtdb(app: App, ctx: FirebaseToolContext, input: RtdbIn
     limitToFirst: input.limitToFirst,
     limitToLast: input.limitToLast
   }
-  if (input.shallow && rule.link?.by === 'field') throw new ToolError(messages.firebaseNoShallow(rule.node))
+  if (input.shallow && rule.link?.by === 'field') throw fail.firebaseNoShallow(rule.node)
   const hasQuery = Object.values(query).some((value) => value !== undefined && value !== false)
   if ((rule.link?.by === 'field' || rule.ownRows) && rest.length === 1 && hasQuery) {
-    throw new ToolError(messages.firebaseQuery(`orderBy, filters and limits work on ${rule.node}, not on one record`))
+    throw fail.firebaseQuery(`orderBy, filters and limits work on ${rule.node}, not on one record`)
   }
   if (input.orderBy !== undefined && input.orderBy !== '$key' && input.orderBy !== '$value') {
     assertSafeFieldPath(input.orderBy, 'orderBy')
@@ -236,19 +242,19 @@ export async function readRtdb(app: App, ctx: FirebaseToolContext, input: RtdbIn
   let queryString: string
   if (checked.timesheetMode === 'own' && rest.length === 0) {
     if (hasQuery) {
-      throw new ToolError(messages.firebaseOwnRowsOnly())
+      throw fail.firebaseOwnRowsOnly()
     }
     queryString = rtdbQueryString({ orderBy: 'owner', equalTo: access.uid })
   } else {
     queryString = ownerQuery
   }
   const hidden = await hiddenProjects(app, reader, rule)
-  if (rule.entityKeyed && hidden.size > 0) throw new ToolError(messages.firebaseEntityKeyed(rule.node))
+  if (rule.entityKeyed && hidden.size > 0) throw fail.firebaseEntityKeyed(rule.node)
   const response = await reader
     .send(rtdbRequest(app, reader, checked.segments, queryString, rule.node, input.path), 'rtdb', input.path)
     .catch((err: Error) => {
       if (/Index not defined/.test(err.message) && input.orderBy) {
-        throw new ToolError(messages.firebaseNoIndex(input.orderBy, rule.node, indexesOf(rule.node)))
+        throw fail.firebaseNoIndex(input.orderBy, rule.node, indexesOf(rule.node))
       }
       throw err
     })
@@ -263,7 +269,7 @@ export async function readRtdb(app: App, ctx: FirebaseToolContext, input: RtdbIn
   let data: unknown = value
   if (hasLocalOps(ops)) {
     if (value === null) data = applyLocalOps({}, ops)
-    else if (!isRecords(value)) throw new ToolError(messages.firebaseNotRecords(localOptionName(ops), input.path))
+    else if (!isRecords(value)) throw fail.firebaseNotRecords(localOptionName(ops), input.path)
     else data = applyLocalOps(value, ops)
   } else if (isRecords(value)) {
     data = Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
@@ -272,7 +278,9 @@ export async function readRtdb(app: App, ctx: FirebaseToolContext, input: RtdbIn
   const body =
     data !== null && typeof data === 'object' && 'groups' in data
       ? { ...(data as Record<string, unknown>) }
-      : { ...(count === undefined ? {} : { count }), data }
+      : input.select === undefined
+        ? { ...(count === undefined ? {} : { count }), data }
+        : { ...(count === undefined ? {} : { count }), data: selectPaths(data, input.select), selected: input.select }
   return finish({ app: input.app, store: 'rtdb', path: input.path, ...body }, removed, rows.removedRecords)
 }
 
@@ -294,7 +302,7 @@ export async function readFirestore(app: App, ctx: FirebaseToolContext, input: F
   const { rule, rest } = target
   const document = rest.length === 1
   if (document && (input.pageSize !== undefined || input.pageToken !== undefined)) {
-    throw new ToolError(messages.firebaseQuery('pageSize and pageToken work on a collection, not on one document'))
+    throw fail.firebaseQuery('pageSize and pageToken work on a collection, not on one document')
   }
   for (const field of input.fields ?? []) {
     assertSafeFieldPath(field, 'fields')
@@ -386,7 +394,7 @@ function exchangeRatesOf(value: unknown): ExchangeRates {
 
 export async function readBudget(app: App, ctx: FirebaseToolContext, input: BudgetInput) {
   if (splitPath(input.id).length !== 1) {
-    throw new ToolError(messages.firebasePath(input.id, 'the id must be one path segment'))
+    throw fail.firebasePath(input.id, 'the id must be one path segment')
   }
   const allowPersonalData = app.deps.allowPersonalData
   const shown = `${input.kind}/${input.id}`
@@ -397,7 +405,7 @@ export async function readBudget(app: App, ctx: FirebaseToolContext, input: Budg
   const budget = checkFirebaseAccess(budgetTarget, access.permissions, reader.workspace)
   const meta = checkFirebaseAccess(metaTarget, access.permissions, reader.workspace)
   const hidden = await hiddenProjects(app, reader, meta.rule)
-  if (hidden.has(input.id)) throw new ToolError(messages.firebaseNotFound('rtdb', shown))
+  if (hidden.has(input.id)) throw fail.firebaseNotFound('rtdb', shown)
   const read = async (checked: CheckedPath) =>
     (
       await reader.send(
@@ -407,7 +415,7 @@ export async function readBudget(app: App, ctx: FirebaseToolContext, input: Budg
       )
     ).body
   const [project, stored] = await Promise.all([read(meta), read(budget)])
-  if (project === null || typeof project !== 'object') throw new ToolError(messages.firebaseNotFound('rtdb', shown))
+  if (project === null || typeof project !== 'object') throw fail.firebaseNotFound('rtdb', shown)
   const p = project as Record<string, unknown>
   let list = parseBudgetData(stored)
   if (list.length === 0 && p.list != null) list = parseBudgetData(p.list)
@@ -432,4 +440,59 @@ export async function readBudget(app: App, ctx: FirebaseToolContext, input: Budg
     new Set(),
     0
   )
+}
+
+export interface KbSearchInput {
+  realm?: string
+  workspace?: string
+  query: string
+  limit?: number
+}
+
+const KB_SEARCH_LIMIT = 20
+
+export async function searchKnowledgeBase(app: App, ctx: FirebaseToolContext, input: KbSearchInput) {
+  const allowPersonalData = app.deps.allowPersonalData
+  const target = checkFirebaseTarget('rtdb', 'knowledgeBase', allowPersonalData)
+  const reader = await openReader(app, ctx, { ...input, app: 'campaigns', path: 'knowledgeBase' })
+  const access = await reader.access()
+  const checked = checkFirebaseAccess(target, access.permissions, reader.workspace)
+  const response = await reader.send(
+    rtdbRequest(app, reader, checked.segments, '', checked.rule.node, 'knowledgeBase'),
+    'rtdb',
+    'knowledgeBase'
+  )
+  const { value, removed } = redact(response.body, [], checked.rule, allowPersonalData)
+  const needle = input.query.toLowerCase()
+  const limit = input.limit ?? KB_SEARCH_LIMIT
+  const found: Record<string, unknown>[] = []
+  let matches = 0
+  const visit = (nodes: unknown, path: string[]) => {
+    for (const node of kbChildren(nodes)) {
+      const name = typeof node.name === 'string' ? node.name : ''
+      const content = (node.content ?? {}) as Record<string, unknown>
+      const pdf = typeof content.pdfDescription === 'string' ? content.pdfDescription : ''
+      if (name.toLowerCase().includes(needle) || pdf.toLowerCase().includes(needle)) {
+        matches++
+        if (found.length < limit) {
+          found.push({
+            uid: node.uid ?? null,
+            name,
+            path,
+            unit: content.quantityType || null,
+            price: content.price ?? null
+          })
+        }
+      }
+      visit(node.children, [...path, name])
+    }
+  }
+  visit(value, [])
+  return finish({ app: 'campaigns', query: input.query, matches, items: found }, removed, 0)
+}
+
+function kbChildren(nodes: unknown): Record<string, unknown>[] {
+  if (nodes === null || typeof nodes !== 'object') return []
+  const list = Array.isArray(nodes) ? nodes : Object.values(nodes)
+  return list.filter((node): node is Record<string, unknown> => node !== null && typeof node === 'object')
 }

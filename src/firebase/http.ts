@@ -1,5 +1,5 @@
 import type { ApiClient } from '../api/client.js'
-import { messages, ToolError } from '../errors.js'
+import { fail, ToolError } from '../errors.js'
 
 export const MAX_FIREBASE_DOWNLOAD_BYTES = 10_000_000
 const ERROR_TEXT_MAX_CHARS = 500
@@ -64,7 +64,7 @@ export class FirebaseHttp {
         signal: AbortSignal.timeout(this.timeoutMs)
       })
     } catch {
-      throw new ToolError(messages.firebaseFailed(request.store, request.path, null))
+      throw fail.firebaseFailed(request.store, request.path, null)
     }
     if (response.status === PRECONDITION_FAILED) {
       const value = await readJson(response, request)
@@ -91,16 +91,16 @@ export class FirebaseHttp {
 async function readJson(response: Response, request: FirebaseRequest): Promise<unknown> {
   if (Number(response.headers.get('content-length') ?? 0) > MAX_FIREBASE_DOWNLOAD_BYTES) {
     await response.body?.cancel().catch(() => undefined)
-    throw new ToolError(request.tooLarge())
+    throw new ToolError(request.tooLarge(), 'refused', 'tooLarge')
   }
   const bytes = await readBytes(response, MAX_FIREBASE_DOWNLOAD_BYTES + 1)
-  if (bytes === null) throw new ToolError(messages.firebaseFailed(request.store, request.path, response.status))
-  if (bytes.byteLength > MAX_FIREBASE_DOWNLOAD_BYTES) throw new ToolError(request.tooLarge())
+  if (bytes === null) throw fail.firebaseFailed(request.store, request.path, response.status)
+  if (bytes.byteLength > MAX_FIREBASE_DOWNLOAD_BYTES) throw new ToolError(request.tooLarge(), 'refused', 'tooLarge')
   const text = bytes.toString('utf8')
   try {
     return text === '' ? null : JSON.parse(text)
   } catch {
-    throw new ToolError(messages.firebaseFailed(request.store, request.path, response.status))
+    throw fail.firebaseFailed(request.store, request.path, response.status)
   }
 }
 

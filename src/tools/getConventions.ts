@@ -1,7 +1,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { App } from '../app.js'
 import { CONVENTIONS } from '../conventions.js'
+import { runTextTool } from './run.js'
 
-export function registerGetConventions(server: McpServer) {
+export function registerGetConventions(server: McpServer, app: App) {
   server.registerTool(
     'get_conventions',
     {
@@ -10,6 +12,6 @@ export function registerGetConventions(server: McpServer) {
       inputSchema: {},
       annotations: { readOnlyHint: true }
     },
-    () => ({ content: [{ type: 'text', text: CONVENTIONS }] })
+    () => runTextTool(app, 'get_conventions', CONVENTIONS)
   )
 }

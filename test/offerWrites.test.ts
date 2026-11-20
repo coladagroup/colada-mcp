@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { firebaseSetup, ME, rtdbRequests } from './firebaseFake.js'
-import { type Harness, WS_A } from './harness.js'
+import { type FakeWorld, fakeUser, type Harness, WS_A } from './harness.js'
 
 const WS = WS_A
 const CREATE = 'campaigns_create_offer'
@@ -53,6 +53,11 @@ async function setup(options: { allowPersonalData?: boolean; permissions?: strin
   const result = await firebaseSetup({ allowPersonalData: options.allowPersonalData })
   harnesses.push(result.h)
   result.fw.permissions = options.permissions ?? ALL
+  result.fw.world.users.set(WS, [
+    fakeUser(ME, 'frank@colada.test'),
+    fakeUser('u-pm', 'PM@b.ch', ['campaigns_app_service_manager']),
+    fakeUser('u-guest', 'guest@b.ch', ['leads_app_admin'])
+  ])
   result.fw.rtdb[WS] = {
     projectCounter: 41,
     planner: {
@@ -68,7 +73,10 @@ async function setup(options: { allowPersonalData?: boolean; permissions?: strin
       d2: D2
     },
     taskBoards: { d2: { uid: 'd2', prefix: 'LT', boards: [{ id: 'backlog' }], taskCounter: 0 } },
-    costCenters: [{ uid: 'cc1', name: 'HQ', children: [{ uid: 'cc2', name: 'Sales' }] }],
+    costCenters: {
+      list: [{ uid: 'cc1', name: 'HQ', children: [{ uid: 'cc2', name: 'Sales' }] }],
+      updatedAt: '2026-10-01T10:00:00.000Z'
+    },
     projects: { p1: { uid: 'p1', name: 'Fair', owner: 'boss' } }
   }
   return result
@@ -284,12 +292,40 @@ describe('campaigns_create_offer', () => {
     expect(writes(world)).toEqual([])
   })
 
-  it('refuses a missing cost center with E21; a nested one is found', async () => {
+  it('refuses a missing cost center with E21 and lists the valid ones (AC-6.1)', async () => {
     const { h, world } = await setup()
     const result = await call(h, CREATE, { ...OFFER_INPUT, costCenter: 'cc7' })
 
-    expect(result.body.error).toBe(`Cost center "cc7" does not exist in workspace ${WS}. Nothing was written.`)
+    expect(result.body.error).toBe(
+      `Cost center "cc7" does not exist in workspace ${WS}. Nothing was written. Cost centers (uid: name): cc1: HQ; cc2: Sales.`
+    )
     expect(writes(world)).toEqual([])
+    const lines = h.logs.filter((line) => line.tool === CREATE)
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatchObject({ method: null, path: null, outcome: 'refused', reason: 'writeUnknownCostCenter' })
+  })
+
+  it('finds top-level and nested cost centers inside the {list, updatedAt} wrapper on create and update (AC-6.1)', async () => {
+    const { h } = await setup()
+    for (const costCenter of ['cc1', 'cc2']) {
+      expect((await call(h, CREATE, { ...OFFER_INPUT, costCenter })).isError).toBe(false)
+      expect((await call(h, UPDATE, { offer: 'o1', costCenter })).isError).toBe(false)
+    }
+  })
+
+  it('accepts the plain array shape of costCenters too', async () => {
+    const { h, fw } = await setup()
+    ;(fw.rtdb[WS] as Record<string, unknown>).costCenters = [{ uid: 'cc5', name: 'Old' }]
+    expect((await call(h, CREATE, { ...OFFER_INPUT, costCenter: 'cc5' })).isError).toBe(false)
+  })
+
+  it('lists at most 20 cost centers on a miss', async () => {
+    const { h, fw } = await setup()
+    const list = Array.from({ length: 25 }, (_, i) => ({ uid: `c${i}`, name: `N${i}` }))
+    ;(fw.rtdb[WS] as Record<string, unknown>).costCenters = { list, updatedAt: '2026-10-01T10:00:00.000Z' }
+    const error = String((await call(h, CREATE, { ...OFFER_INPUT, costCenter: 'cc7' })).body.error)
+    expect(error).toContain('c19: N19; and 5 more (rtdb_get costCenters/list).')
+    expect(error).not.toContain('c20:')
   })
 
   it('refuses missing required fields, bad dates and a start after the end with no Firebase request (P19, E22)', async () => {
@@ -371,7 +407,7 @@ describe('campaigns_create_offer', () => {
       person: 'k3',
       notes: 'call back',
       participants: ['a@b.ch'],
-      projectManager: 'pm@b.ch',
+      projectManager: 'u-pm',
       currency: 'EUR',
       eventsNum: 2,
       guests: 40,
@@ -435,17 +471,18 @@ describe('campaigns_update_offer', () => {
     expect(result.body).toMatchObject({
       offer: 'o1',
       changed: ['name', 'status', 'po'],
-      deal: { synced: ['name', 'status'] },
+      deal: { exists: true, synced: ['name', 'status'] },
       written: [{ method: 'PATCH', path: '/' }]
     })
   })
 
   it('touches no deal when the call has no name or status, or the offer has no lead', async () => {
     const { h, fw, world } = await setup()
-    await call(h, UPDATE, { offer: 'o1', guests: 50 })
+    const noSynced = await call(h, UPDATE, { offer: 'o1', guests: 50 })
     const noDeal = await call(h, UPDATE, { offer: 'o4', name: 'Solo' })
 
-    expect(noDeal.body.deal).toBeNull()
+    expect(noSynced.body.deal).toEqual({ exists: true, synced: [] })
+    expect(noDeal.body.deal).toEqual({ exists: false, synced: [] })
     expect(node(fw, 'deals').o1?.name).toBe('Gala')
     expect(writes(world).every((request) => !String(request.body).includes('/deals/'))).toBe(true)
   })
@@ -491,7 +528,7 @@ describe('campaigns_update_offer', () => {
       `Offer "o9" does not exist in workspace ${WS}. Nothing was written.`
     )
     expect((await call(h, UPDATE, { offer: 'o1', costCenter: 'cc7' })).body.error).toBe(
-      `Cost center "cc7" does not exist in workspace ${WS}. Nothing was written.`
+      `Cost center "cc7" does not exist in workspace ${WS}. Nothing was written. Cost centers (uid: name): cc1: HQ; cc2: Sales.`
     )
     expect(writes(world)).toEqual([])
   })
@@ -549,6 +586,7 @@ describe('campaigns_create_lead', () => {
       closeDate: '2027-04-01T00:00:00.000Z',
       status: 'qualified',
       chance: '25%',
+      accountManager: ME,
       owner: ME,
       updatedBy: ME,
       updatedAt: NOW_JSON,
@@ -571,11 +609,9 @@ describe('campaigns_create_lead', () => {
     expect(result.body).toMatchObject({ written: [{ method: 'PATCH', path: '/' }] })
   })
 
-  it('refuses accountManager, costCenter, plannerProject and offer as input (P9, P18, P34)', async () => {
+  it('refuses owner, costCenter, plannerProject and offer as input (P9, P18, P34, Q14)', async () => {
     const { h, world } = await setup({ allowPersonalData: true })
-    expect((await schemaText(h, LEAD, { name: 'L', accountManager: ME })).text).toContain(
-      '"accountManager" cannot be set.'
-    )
+    expect((await schemaText(h, LEAD, { name: 'L', owner: ME })).text).toContain('"owner" cannot be set.')
     for (const field of ['costCenter', 'plannerProject', 'offer']) {
       expect((await schemaText(h, LEAD, { name: 'L', [field]: 'x' })).text).toContain(
         `"${field}" is not an input of this tool.`
@@ -609,5 +645,95 @@ describe('offer and lead tools never write projects/ or deals/*/costCenter (AC-P
     expect(bodies.some((text) => text.includes('/projects/'))).toBe(false)
     expect(bodies.some((text) => /deals\/[^"]+\/costCenter/.test(text))).toBe(false)
     expect(writes(world).some((request) => request.method === 'DELETE')).toBe(false)
+  })
+})
+
+describe('users resolver: projectManager and lead accountManager (AC-6.2, AC-6.9, Q21)', () => {
+  const usersRequests = (world: FakeWorld) => world.requests.filter((r) => r.url.pathname === '/_gw/s-access/api/users')
+  const writeRequests = (world: FakeWorld) => rtdbRequests(world).filter((r) => r.method !== 'GET')
+
+  it('stores the uid for a projectManager email (any case) or uid, on create and update', async () => {
+    const { h, fw } = await setup()
+    const created = await call(h, CREATE, { ...OFFER_INPUT, projectManager: 'pm@B.CH' })
+    expect(node(fw, 'planner')[created.body.id as string]?.projectManager).toBe('u-pm')
+
+    expect((await call(h, UPDATE, { offer: 'o1', projectManager: ME })).isError).toBe(false)
+    expect(node(fw, 'planner').o1?.projectManager).toBe(ME)
+    expect((await call(h, UPDATE, { offer: 'o1', projectManager: 'PM@b.ch' })).isError).toBe(false)
+    expect(node(fw, 'planner').o1?.projectManager).toBe('u-pm')
+  })
+
+  it('refuses an unknown email, an unknown uid and a user with no Campaigns role before any write', async () => {
+    const { h, world } = await setup()
+    for (const projectManager of ['nobody@b.ch', 'u-none', 'u-guest', 'guest@b.ch']) {
+      const created = await call(h, CREATE, { ...OFFER_INPUT, projectManager })
+      expect(created.body.error).toBe(
+        `projectManager: no Campaigns user of workspace ${WS} has this uid or email. Nothing was written.`
+      )
+      const updated = await call(h, UPDATE, { offer: 'o1', projectManager })
+      expect(updated.isError).toBe(true)
+    }
+    expect(writeRequests(world)).toEqual([])
+    expect(h.logs.filter((line) => line.tool === CREATE).every((line) => line.reason === 'writeUnknownUser')).toBe(true)
+  })
+
+  it('a new lead gets the caller as accountManager, or the given Campaigns user; others are refused (AC-6.9)', async () => {
+    const { h, fw, world } = await setup({ allowPersonalData: true })
+    const own = await call(h, LEAD, { name: 'Own' })
+    expect(node(fw, 'deals')[own.body.id as string]?.accountManager).toBe(ME)
+    const other = await call(h, LEAD, { name: 'Other', accountManager: 'pm@b.ch' })
+    expect(other.isError).toBe(false)
+    expect(node(fw, 'deals')[other.body.id as string]?.accountManager).toBe('u-pm')
+
+    const before = writeRequests(world).length
+    const refused = await call(h, LEAD, { name: 'Refused', accountManager: 'u-guest' })
+    expect(refused.body.error).toBe(
+      `accountManager: no Campaigns user of workspace ${WS} has this uid or email. Nothing was written.`
+    )
+    expect(writeRequests(world)).toHaveLength(before)
+  })
+
+  it('never puts a user name or email from the users list into an answer or a log line', async () => {
+    const { h } = await setup({ allowPersonalData: true })
+    const answers = [
+      await call(h, LEAD, { name: 'L', accountManager: 'pm@b.ch' }),
+      await call(h, LEAD, { name: 'L', accountManager: 'u-guest' }),
+      await call(h, CREATE, { ...OFFER_INPUT, projectManager: 'u-pm' }),
+      await call(h, UPDATE, { offer: 'o1', projectManager: 'nobody@b.ch' })
+    ]
+    const text = JSON.stringify([answers.map((answer) => answer.body), h.logs])
+    for (const secret of ['First-', 'Last-', 'PM@b.ch', 'pm@b.ch', 'guest@b.ch', 'frank@colada.test', 'nobody@b.ch']) {
+      expect(text).not.toContain(secret)
+    }
+  })
+
+  it('without api:users:list only the caller uid is accepted (Q21)', async () => {
+    const { h, fw, world } = await setup({ allowPersonalData: true })
+    world.backendStatus.set('/_gw/s-access/api/users', 403)
+    const own = await call(h, LEAD, { name: 'Own', accountManager: ME })
+    expect(node(fw, 'deals')[own.body.id as string]?.accountManager).toBe(ME)
+    const other = await call(h, UPDATE, { offer: 'o1', projectManager: 'u-pm' })
+    expect(other.body.error).toBe(
+      'projectManager can only be your own uid: your role lacks api:users:list, so the MCP cannot check other users. Nothing was written.'
+    )
+    expect(h.logs.at(-1)).toMatchObject({ outcome: 'refused', reason: 'usersListForbidden' })
+  })
+
+  it('reads every page of the users list with Range and caches it for 10 minutes', async () => {
+    const { h, fw, world } = await setup()
+    const many = Array.from({ length: 250 }, (_, i) => fakeUser(`u${i}`, `u${i}@b.ch`))
+    world.users.set(WS, many)
+    expect((await call(h, UPDATE, { offer: 'o1', projectManager: 'u230@b.ch' })).isError).toBe(false)
+    expect(node(fw, 'planner').o1?.projectManager).toBe('u230')
+    expect(usersRequests(world).map((r) => r.headers.range)).toEqual(['users 0-100', 'users 100-200', 'users 200-300'])
+    for (const edge of ['u99', 'u199', 'u249']) {
+      expect((await call(h, UPDATE, { offer: 'o1', projectManager: edge })).isError).toBe(false)
+    }
+
+    await call(h, UPDATE, { offer: 'o1', projectManager: 'u5' })
+    expect(usersRequests(world)).toHaveLength(3)
+    world.now += 601
+    await call(h, UPDATE, { offer: 'o1', projectManager: 'u5' })
+    expect(usersRequests(world)).toHaveLength(6)
   })
 })

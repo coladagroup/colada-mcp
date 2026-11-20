@@ -1,5 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import type { App } from '../app.js'
+import { type App, isoTime } from '../app.js'
 import { openRealm, realmShape, runTool } from './run.js'
 
 export function registerListWorkspaces(server: McpServer, app: App) {
@@ -14,8 +14,10 @@ export function registerListWorkspaces(server: McpServer, app: App) {
     },
     (params) => {
       return runTool(app, 'list_workspaces', params, async (ctx) => {
-        const { directory } = await openRealm(app, ctx, params.realm)
-        return { workspaces: await directory.list(ctx.state, true) }
+        const { directory, session } = await openRealm(app, ctx, params.realm)
+        const workspaces = await directory.list(ctx.state, true)
+        const endsAt = await session.sessionEndsAt()
+        return { workspaces, sessionEndsAt: endsAt === null ? null : isoTime(endsAt) }
       })
     }
   )

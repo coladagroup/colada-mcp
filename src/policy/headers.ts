@@ -1,4 +1,4 @@
-import { messages, ToolError } from '../errors.js'
+import { fail } from '../errors.js'
 
 const ALLOWED_HEADERS: Record<string, string> = { range: 'Range', 'if-match': 'If-Match' }
 
@@ -9,7 +9,7 @@ export function checkHeaders(headers: Record<string, string>): Record<string, st
   for (const [name, value] of Object.entries(headers)) {
     const key = name.toLowerCase()
     const allowed = Object.hasOwn(ALLOWED_HEADERS, key) ? ALLOWED_HEADERS[key] : undefined
-    if (allowed === undefined || !HEADER_VALUE.test(value)) throw new ToolError(messages.headerNotAllowed(name))
+    if (allowed === undefined || !HEADER_VALUE.test(value)) throw fail.headerNotAllowed(name)
     checked[allowed] = value
   }
   return checked

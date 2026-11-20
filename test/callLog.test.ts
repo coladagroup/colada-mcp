@@ -11,12 +11,16 @@ describe('call log file', () => {
     const log = fileCallLog(path)
     const entry = {
       time: '2026-10-20T12:00:00.000Z',
+      pid: 1,
+      client: 'test',
       realm: 'default',
       user: 'frank',
       workspace: null,
       tool: 'list_workspaces',
       params: {},
-      httpStatus: 200
+      httpStatus: 200,
+      outcome: 'ok' as const,
+      reason: null
     }
     await log(entry)
     await log({ ...entry, tool: 'logout', httpStatus: null })

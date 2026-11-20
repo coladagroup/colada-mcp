@@ -8,7 +8,15 @@ import {
   UPDATE_TIMESHEET,
   updateTimesheetReport
 } from '../firebase/campaigns/writes/timesheetReports.js'
-import { realmShape, runFirebaseWriteTool, WRITE_TOOL_ANNOTATIONS, workspaceInput, writeInput } from './run.js'
+import {
+  previewShape,
+  realmShape,
+  runFirebaseWriteTool,
+  WRITE_TOOL_ANNOTATIONS,
+  withoutPreview,
+  workspaceInput,
+  writeInput
+} from './run.js'
 
 const id = (what: string) => z.string().min(1).max(200).describe(what)
 
@@ -28,29 +36,20 @@ const fields = {
 }
 
 const WRITTEN_NOTE =
-  'The output lists every write in "written". There is no undo and no dry run: check the values with the user first.'
+  'The output lists every write in "written". There is no undo. Call with preview: true first to see the writes without sending them and check them with the user; on prod hosts the real call needs the previewId from that preview.'
 
 export function registerTimesheetTools(server: McpServer, app: App) {
   server.registerTool(
     ADD_TIMESHEET,
     {
       description: `Adds one entry to your own Campaigns timesheet in one workspace, as the Timesheet page does. With "entity" the entry is also copied into reports[date] of that row in budgets/<project>. The Timesheet page counts an entry only when it has "account" and "description" (it shows a red "!" otherwise), so pass both. owner is always you. ${WRITTEN_NOTE}`,
-      inputSchema: writeInput({ ...realmShape(app), workspace: workspaceInput, ...fields }),
+      inputSchema: writeInput({ ...realmShape(app), workspace: workspaceInput, ...previewShape, ...fields }),
       annotations: WRITE_TOOL_ANNOTATIONS
     },
     (params) => {
       const key = pushKey(app.deps.now() * 1000)
-      const call = {
-        app: 'campaigns' as const,
-        store: 'rtdb' as const,
-        method: 'PUT',
-        path: `timesheet/${key}`,
-        paths: null,
-        ifMatch: true,
-        retries: 0
-      }
-      return runFirebaseWriteTool(app, ADD_TIMESHEET, params.realm, call, (ctx) =>
-        addTimesheetReport(app, ctx, params, key)
+      return runFirebaseWriteTool(app, ADD_TIMESHEET, params, null, (ctx) =>
+        addTimesheetReport(app, ctx, withoutPreview(params), key)
       )
     }
   )
@@ -61,6 +60,7 @@ export function registerTimesheetTools(server: McpServer, app: App) {
       inputSchema: writeInput({
         ...realmShape(app),
         workspace: workspaceInput,
+        ...previewShape,
         key: id('Key of your timesheet entry.'),
         date: fields.date.optional(),
         hours: fields.hours,
@@ -74,17 +74,8 @@ export function registerTimesheetTools(server: McpServer, app: App) {
       annotations: WRITE_TOOL_ANNOTATIONS
     },
     (params) => {
-      const call = {
-        app: 'campaigns' as const,
-        store: 'rtdb' as const,
-        method: 'PUT',
-        path: `timesheet/${params.key}`,
-        paths: null,
-        ifMatch: true,
-        retries: 0
-      }
-      return runFirebaseWriteTool(app, UPDATE_TIMESHEET, params.realm, call, (ctx) =>
-        updateTimesheetReport(app, ctx, params)
+      return runFirebaseWriteTool(app, UPDATE_TIMESHEET, params, `timesheet/${params.key}`, (ctx) =>
+        updateTimesheetReport(app, ctx, withoutPreview(params))
       )
     }
   )

@@ -261,9 +261,10 @@ function firestoreAnswer(fw: FirebaseWorld, url: URL, headers: Record<string, st
   })
 }
 
-export async function firebaseSetup(options: { allowPersonalData?: boolean } = {}) {
+export async function firebaseSetup(options: { allowPersonalData?: boolean; host?: string } = {}) {
+  const host = options.host ?? STAGE_HOST
   const world = new FakeWorld()
-  world.addRealm(STAGE_HOST, {
+  world.addRealm(host, {
     user: 'frank',
     members: [WS_A, WS_B],
     workspaces: [workspace(WS_A, 'Alpha'), workspace(WS_B, 'Beta')]
@@ -305,8 +306,8 @@ export async function firebaseSetup(options: { allowPersonalData?: boolean } = {
   world.externalRaw.set(FIRESTORE_HOST, (url, init) =>
     firestoreAnswer(fw, url, Object.fromEntries(new Headers(init?.headers).entries()))
   )
-  const h: Harness = await createHarness(world, [STAGE_HOST], undefined, options.allowPersonalData ?? false)
-  world.seedRefreshToken(STAGE_HOST, h.store)
+  const h: Harness = await createHarness(world, [host], undefined, options.allowPersonalData ?? false)
+  world.seedRefreshToken(host, h.store)
   return { h, fw, world }
 }
 

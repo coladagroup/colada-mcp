@@ -45,6 +45,8 @@ The api-doc of each service (get_api_doc) is the source for routes and bodies. T
 
 - Revision: one record and most writes return "X-ETag: <revision>", a plain number. Send it as "If-Match: <revision>". Some writes (for example department updates) return no revision.
 - Without If-Match most update routes answer 400. With an old revision they answer 409.
+- api_write with preview: true runs the policy checks and returns the request (method, host, service, path, query, header names, body) without sending it. It uses no write budget.
+- api_write_batch sends up to 25 api_write items in one workspace with one approval. Use it only after the same change worked on one record with api_write. One refused item stops the whole batch before anything is sent; a failed item stops the rest ("not run"). It returns no response bodies: read the records again with api_get.
 - 409 can also be a business rule (a limit reached, a duplicate). Read the record again and retry once; on a second 409 stop and tell the user.
 - A failed call shows the status and up to 500 characters of the service's answer. Many answers are empty; then check the required fields in the api-doc and whether If-Match was sent.
 - Create (POST) usually answers 201 with the record. Updates answer 204, or 200/201 with the record. Check the api-doc of the route.
@@ -61,9 +63,22 @@ Events (s-events)
 Email templates (s-email-templates)
 - One template: GET or PATCH /api/events/{event_id}/emailtemplates/{template_id}. PATCH needs If-Match and displayName.
 - PATCH clears sendingTriggers, sendingCondition and visibleIfForSender when they are missing from the body: then automatic mails stop. Always copy them from the record you read.
-- l10n is replaced as a whole: send every language, not only the changed one.
+- Missing from the body and kept: l10n, from, replyTo, to, cc, bcc, attachments, automaticallyCreateCID. A PATCH without displayName is refused (400).
+- l10n is replaced as a whole: send every language, not only the changed one. attachments, to, cc and bcc are also replaced as a whole when sent.
+- GET .../emailtemplates/all returns l10n as {} and leaves out sendingTriggers. Read one template by id before a PATCH.
 - Each language has subject and body. A designer body has json (the editor design, a JSON string) and html (the rendered mail); change both together or the editor and the mail differ. A simple body has only content.
 - Paging works on GET .../emailtemplates/all. GET .../emailtemplates ignores Range.
+
+Email log (s-email-logger)
+- Send Range ("Range: mailmessages 0-50"); the api-doc marks it as required. A projection on .../guests/mailmessages (:(status)) gives 404.
+- Filter by template with q=emailTemplate._id=<template id>. emailTemplate.id=<template id> returns 0 items and no error.
+
+Event resources (s-events-resources)
+- GET .../resources/rn_<name> works only when the name has the form of a UUID. Other names give 404; use the resource id.
+- PUT works only with the id: there is no PUT route for rn_<name> (404). PUT .../resources/{id} needs no If-Match and answers X-ETag 0. Send the whole record you read: type, displayNameL10n, the is* flags, cancellationFees and options are required. For allocation context PARTICIPANT_GROUPS it resets isRequestEnabled, requestStart and requestEnd.
+
+Directory contacts (s-directory-contacts)
+- GET /api/contacts needs Range ("Range: contacts 0-100"). Without it the service answers 400 with an empty body.
 
 Registration forms (s-events-forms)
 - Base: /api/events/{event_id}/formtemplates/registration. PUT .../structure, PUT .../settings and PUT .../published need If-Match.
@@ -74,6 +89,7 @@ Guest schema of an event (s-events-guests, allowed without personal data)
 - GET /api/events/{e}/guestschema lists the fields an event uses. PUT .../guestschema/properties sets them, PUT .../guestschema/synced pulls the workspace definitions. They need If-Match greater than 0.
 
 Guests (s-events-guests, personal data)
+- A projection on the guest list (/api/events/{e}/guests:(status)) is ignored: full guest records come back. Use select (for example ["id", "status"]) to keep only what you need.
 - PATCH /api/events/{e}/guests/{g} replaces all attributes: missing ones are removed.
 - PATCH /api/events/{e}/guests/{g}/attributes changes only the attributes you send.
 
@@ -86,6 +102,7 @@ Realtime Database nodes (rtdb_get)
 - planner/<id>: offers. budgets/<projectId> and plannerBudgets/<offerId>: the budget tree of a project or offer (rows with content and subRows).
 - timesheet/<id>: booked time (owner, date YYYY-MM-DD, hours, minutes, project, entity, tag, account). Index: owner, project. There is no index on date: filter dates with where.
 - tags, units, costCenters, currencies, pdfTemplates, checklists, knowledgeBase, projectCounter: reference data.
+- costCenters is stored as {list, updatedAt}: read the tree with rtdb_get path costCenters/list. knowledgeBase is a plain list.
 - deals (leads), invoices/<projectId>, taskBoards/<source>, tasks (index: source), emailTemplates, companyDetails.
 - Personal data, off by default: activities, comments, chat, richChat, history, externalAssignees, accounts.
 
@@ -106,19 +123,23 @@ Totals
 Hidden data and limits
 - Personal fields (for example timesheet description, project owner and contacts) are removed while personal data is off; removedFields lists their names. Secrets are never returned. A removed field cannot be used in where, fields, groupBy or sum.
 - orderBy, equalTo, startAt, endAt, limitToFirst and limitToLast run in Firebase and need an index ($key always works). They work on a node, not on one record of timesheet, tasks, activities or history. where, fields, groupBy and sum run in the MCP after the download.
-- A download over 10 MB is refused: narrow it with an indexed orderBy and equalTo, or with limits. A result over 500 KB is refused: use fields, where or groupBy.
+- A download over 10 MB is refused: narrow it with an indexed orderBy and equalTo, or with limits. A result over 500 KB is refused: use select, fields, where or groupBy. select keeps only the named paths of data ("*" = every key or item, for example ["*.name"]) after hidden fields are removed.
 
 ## Campaigns writes
 
-Six tools change Campaigns data. Each one writes the same nodes and fields as the matching action in the Campaigns app, with your Campaigns permissions.
+Nine tools change Campaigns data. Each one writes the same nodes and fields as the matching action in the Campaigns app, with your Campaigns permissions.
 - campaigns_add_timesheet_report, campaigns_update_timesheet_report: your own timesheet entries only. With entity the entry is also copied into that budget row; a change of project, entity or date moves the copy.
-- campaigns_create_offer (optionally from a lead), campaigns_update_offer, campaigns_create_lead.
-- campaigns_add_budget_rows: knowledge base, free and group rows in an offer budget, then the offer total and allocated, and history records as the budget table writes them.
+- campaigns_create_offer (optionally from a lead), campaigns_update_offer, campaigns_create_lead, campaigns_update_lead (lead fields; name and status are copied to its offer; the cost center is never changed).
+- campaigns_add_budget_rows: knowledge base, free and group rows in an offer budget, then the offer total and allocated, and history records as the budget table writes them. replaceBlankRow: true removes the blank row of a new offer in the same write.
+- campaigns_update_budget_row (fields of one row, or a move with parentRow and position) and campaigns_remove_budget_rows (rows inside one budget; rows with timesheet copies are refused; the last row cannot be removed, so add the new rows first).
+- campaigns_kb_search (read only) finds knowledge base items by a part of the name; use the uid as kbItem.
 
 Rules
-- There is no undo, no dry run and no delete. Show the user the values first and wait for a yes.
-- owner and other user fields are always you; they cannot be set.
-- Ids you pass (project, entity, offer, lead, costCenter, kbItem, unit, parentRow) must exist in the workspace, or nothing is written.
+- There is no undo. Nothing deletes a Firebase node; campaigns_remove_budget_rows only removes rows inside one budget. Call the tool with preview: true first: it runs every check and read and returns the writes in "writes" without sending them. Show them to the user and wait for a yes.
+- On prod hosts (every host whose name does not start with stage-) the real call needs "previewId" from a preview of the same tool with the same input. It is valid for 10 minutes and works once. Without it the call is refused before anything is read or written. On stage hosts previewId is optional.
+- A preview reserves nothing: the real call reads fresh data and takes its own keys and offer number.
+- owner, updatedBy and createdBy are always you; they cannot be set. Timesheet entries you add belong to you. To book time as another user, call logout and log in as that user. projectManager and a lead accountManager take a uid or email of a Campaigns user of the workspace.
+- Ids you pass (project, entity, offer, lead, row, costCenter, kbItem, unit, parentRow) must exist in the workspace, or nothing is written.
 - Personal fields (timesheet description, offer person, participants and description, lead name, contact and summary) need personal data on.
 - A change by someone else between read and write is kept: the tool reads again and applies your change on top, at most 3 times.
 - "written" in the output lists every write. When a later write fails after an earlier one was saved, the error says what is saved and what is not. Do not repeat the whole call; read the data and fix only the missing part.
@@ -129,5 +150,5 @@ Rules
 - "got no response" on a write: it may have been applied. Read before you retry.
 - A write whose response body is not returned was still applied. Do not send it again.
 - 401 on a write is not resent. Call api_write again; the user approves again.
-- Read responses over 500 KB are refused. Use Range, q or a projection.
+- api_get downloads up to 10 MB, but answers over 500 KB are refused. Use select (only the paths you need, for example ["id", "status", "sentMailMessages.*.status"]; on a list each path applies to every item), Range, q or a projection.
 `

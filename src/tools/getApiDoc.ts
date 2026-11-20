@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { callBackend } from '../api/backend.js'
 import type { App } from '../app.js'
-import { messages, ResponseTooLargeError, ToolError } from '../errors.js'
+import { fail, messages, ResponseTooLargeError } from '../errors.js'
 import { checkService, MAX_RESPONSE_BYTES } from '../policy/index.js'
 import { openRealm, realmShape, runApiTool } from './run.js'
 
@@ -41,8 +41,8 @@ export function registerGetApiDoc(server: McpServer, app: App) {
       return runApiTool(app, 'get_api_doc', params.realm, call, async (ctx) => {
         const { service, doc } = params
         if (service) checkService(service)
-        else if (doc) throw new ToolError(messages.apiDocNeedsService())
-        if (doc !== undefined && !DOC_NAME.test(doc)) throw new ToolError(messages.apiDocBadName(doc))
+        else if (doc) throw fail.apiDocNeedsService()
+        if (doc !== undefined && !DOC_NAME.test(doc)) throw fail.apiDocBadName(doc)
         const { session } = await openRealm(app, ctx, params.realm)
         const get = (path: string, notFound?: string) => {
           ctx.call.path = path
@@ -70,15 +70,13 @@ export function registerGetApiDoc(server: McpServer, app: App) {
 async function singleDoc(service: string, catalog: () => Promise<{ body: unknown }>): Promise<string> {
   const entries = (await catalog()).body
   const entry = Array.isArray(entries) ? (entries as ServiceDocs[]).find((item) => item.service === service) : undefined
-  if (!entry) throw new ToolError(messages.apiDocNoService(service))
+  if (!entry) throw fail.apiDocNoService(service)
   const [first, ...rest] = entry.docs
-  if (!first) throw new ToolError(messages.apiDocNoService(service))
+  if (!first) throw fail.apiDocNoService(service)
   if (rest.length > 0)
-    throw new ToolError(
-      messages.apiDocSeveral(
-        service,
-        entry.docs.map((item) => item.name)
-      )
+    throw fail.apiDocSeveral(
+      service,
+      entry.docs.map((item) => item.name)
     )
   return first.name
 }
@@ -92,7 +90,7 @@ async function fetchDoc(
   try {
     return (await get(path, messages.apiDocNotFound(service, doc))).body
   } catch (err) {
-    if (err instanceof ResponseTooLargeError) throw new ToolError(messages.apiDocTooLarge(service, doc))
+    if (err instanceof ResponseTooLargeError) throw fail.apiDocTooLarge(service, doc)
     throw err
   }
 }

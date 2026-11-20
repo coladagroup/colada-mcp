@@ -11,6 +11,7 @@ import {
 import {
   checkPersonalInput,
   IDENTITY_INPUT_FIELDS,
+  LEAD_UPDATE_FIELDS,
   OFFER_UPDATE_FIELDS,
   PERSONAL_INPUT_FIELDS,
   WRITE_RULES,
@@ -51,13 +52,25 @@ const EXPECTED_RULES: Array<[string, WriteTool, 'put' | 'patch', string]> = [
   ['W15', 'campaigns_create_lead', 'patch', 'workspaces/{ws}/deals/{id}'],
   ['W16', 'campaigns_create_lead', 'patch', 'workspaces/{ws}/taskBoards/{id}'],
   ['W17', 'campaigns_create_lead', 'patch', 'externalIds/{id}'],
-  ['W18', 'campaigns_add_budget_rows', 'patch', 'workspaces/{ws}/history/{id}']
+  ['W18', 'campaigns_add_budget_rows', 'patch', 'workspaces/{ws}/history/{id}'],
+  ['W19', 'campaigns_update_budget_row', 'put', 'workspaces/{ws}/plannerBudgets/{id}'],
+  ['W20', 'campaigns_update_budget_row', 'patch', 'workspaces/{ws}/planner/{id}/{field}'],
+  ['W21', 'campaigns_update_budget_row', 'patch', 'workspaces/{ws}/history/{id}'],
+  ['W22', 'campaigns_remove_budget_rows', 'put', 'workspaces/{ws}/plannerBudgets/{id}'],
+  ['W23', 'campaigns_remove_budget_rows', 'patch', 'workspaces/{ws}/planner/{id}/{field}'],
+  ['W24', 'campaigns_remove_budget_rows', 'patch', 'workspaces/{ws}/history/{id}'],
+  ['W25', 'campaigns_update_lead', 'patch', 'workspaces/{ws}/deals/{id}/{field}'],
+  ['W26', 'campaigns_update_lead', 'patch', 'workspaces/{ws}/planner/{id}/{field}']
 ]
 
 const EXPECTED_FIELDS: Record<string, string[]> = {
   W11: [...OFFER_UPDATE_FIELDS, 'updatedAt', 'updatedBy'],
   W12: ['name', 'status', 'updatedAt', 'updatedBy'],
-  W14: ['total', 'allocated']
+  W14: ['total', 'allocated'],
+  W20: ['total', 'allocated'],
+  W23: ['total', 'allocated'],
+  W25: [...LEAD_UPDATE_FIELDS, 'updatedAt', 'updatedBy'],
+  W26: ['name', 'status']
 }
 
 function concretePath(pattern: readonly string[], field = 'name') {
@@ -111,7 +124,12 @@ describe('write path table (CONTRACT-phase5 §2.1)', () => {
   it('every listed field of a field row is allowed, and a field outside the list is refused', () => {
     for (const rule of WRITE_RULES.filter((candidate) => candidate.fields)) {
       for (const field of rule.fields ?? []) {
-        const value = field === 'updatedBy' ? ME : field === 'total' || field === 'allocated' ? 1 : 'x'
+        const value =
+          field === 'updatedBy' || field === 'accountManager'
+            ? ME
+            : field === 'total' || field === 'allocated'
+              ? 1
+              : 'x'
         const path = concretePath(rule.pattern, field)
         expect(writeRefusal(rule.tool, { method: 'PATCH', path: '', body: { [path]: value } }, CTX)).toBeNull()
       }
@@ -296,6 +314,32 @@ describe('identity fields (AC-P8)', () => {
   )
 })
 
+describe('accountManager checked by the users resolver (Q14, AC-P8 change)', () => {
+  const ws = `workspaces/${WS}`
+  const checked = { ...CTX, checkedUsers: new Set(['someone']) }
+  const lead = (fields: Record<string, unknown>): WriteOp => ({
+    method: 'PATCH',
+    path: '',
+    body: { [`${ws}/deals/k1`]: { name: 'L', ...fields } }
+  })
+
+  it('allows a checked accountManager on deals only', () => {
+    expect(writeRefusal('campaigns_create_lead', lead({ accountManager: 'someone' }), CTX)).toBe('X7')
+    expect(writeRefusal('campaigns_create_lead', lead({ accountManager: 'someone' }), checked)).toBeNull()
+    expect(writeRefusal('campaigns_create_lead', lead({ accountManager: 'other' }), checked)).toBe('X7')
+    const planner: WriteOp = {
+      method: 'PATCH',
+      path: '',
+      body: { [`${ws}/planner/k1`]: { name: 'O', accountManager: 'someone' } }
+    }
+    expect(writeRefusal('campaigns_create_offer', planner, checked)).toBe('X7')
+  })
+
+  it.each(['owner', 'updatedBy', 'createdBy'])('%s stays token-only even when the value was checked', (field) => {
+    expect(writeRefusal('campaigns_create_lead', lead({ [field]: 'someone' }), checked)).toBe('X7')
+  })
+})
+
 describe('personal input fields (P21, P33, AC-P10)', () => {
   it.each(WRITE_TOOLS)('%s refuses its personal fields while the switch is off', (tool) => {
     for (const field of PERSONAL_INPUT_FIELDS[tool]) {
@@ -314,7 +358,10 @@ describe('personal input fields (P21, P33, AC-P10)', () => {
       campaigns_create_offer: ['person', 'participants', 'notes'],
       campaigns_update_offer: ['person', 'participants', 'notes'],
       campaigns_add_budget_rows: [],
-      campaigns_create_lead: ['name', 'contact', 'summary']
+      campaigns_create_lead: ['name', 'contact', 'summary'],
+      campaigns_update_lead: ['name', 'contact', 'summary'],
+      campaigns_update_budget_row: [],
+      campaigns_remove_budget_rows: []
     })
   })
 })
@@ -408,22 +455,14 @@ async function setup(permissions = WRITE_PERMISSIONS) {
   return result
 }
 
-const PLANNED: FirebaseWriteCall = {
-  app: 'campaigns',
-  store: 'rtdb',
-  method: 'PUT',
-  path: 'plannerBudgets/o1',
-  paths: null,
-  ifMatch: true,
-  retries: 0
-}
+const TARGET = 'plannerBudgets/o1'
 
 async function runWrite(
   h: Harness,
   tool: WriteTool,
   body: (writer: CampaignsWriter, ctx: FirebaseWriteToolContext) => Promise<Record<string, unknown>>
 ) {
-  const result = await runFirebaseWriteTool(h.app, tool, undefined, PLANNED, async (ctx) =>
+  const result = await runFirebaseWriteTool(h.app, tool, {}, TARGET, async (ctx) =>
     body(await openWriter(h.app, ctx, tool, { workspace: WS }), ctx)
   )
   const text = (result.content[0] as { text: string }).text
@@ -580,12 +619,16 @@ describe('writer against the fake RTDB', () => {
     expect(lines.map((line) => Object.keys(line).sort())).toEqual([
       [
         'app',
+        'client',
         'httpStatus',
         'ifMatch',
         'method',
+        'outcome',
         'path',
         'paths',
+        'pid',
         'realm',
+        'reason',
         'retries',
         'store',
         'time',
@@ -595,12 +638,16 @@ describe('writer against the fake RTDB', () => {
       ],
       [
         'app',
+        'client',
         'httpStatus',
         'ifMatch',
         'method',
+        'outcome',
         'path',
         'paths',
+        'pid',
         'realm',
+        'reason',
         'retries',
         'store',
         'time',
@@ -632,7 +679,13 @@ describe('writer against the fake RTDB', () => {
     await runWrite(h, 'campaigns_create_lead', async () => ({}))
     const lines = h.logs.filter((log) => log.tool === 'campaigns_create_lead')
     expect(lines).toHaveLength(1)
-    expect(lines[0]).toMatchObject({ method: 'PUT', path: 'plannerBudgets/o1', retries: 0 })
+    expect(lines[0]).toMatchObject({
+      method: null,
+      path: 'plannerBudgets/o1',
+      retries: 0,
+      outcome: 'refused',
+      reason: 'writeMissingPermission'
+    })
   })
 })
 
