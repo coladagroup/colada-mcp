@@ -1,4 +1,4 @@
-import { messages, ToolError } from '../errors.js'
+import { fail } from '../errors.js'
 
 export type WhereOp = 'eq' | 'ne' | 'lt' | 'lte' | 'gt' | 'gte' | 'in' | 'exists' | 'missing'
 export type Scalar = string | number | boolean | null
@@ -35,10 +35,8 @@ const UNSAFE_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype'])
 
 export function assertSafeFieldPath(field: string, option: string) {
   if (field.split('.').some((segment) => UNSAFE_SEGMENTS.has(segment))) {
-    throw new ToolError(
-      messages.firebaseQuery(
-        `"${field}" in ${option}: __proto__, constructor and prototype are not allowed in a field path`
-      )
+    throw fail.firebaseQuery(
+      `"${field}" in ${option}: __proto__, constructor and prototype are not allowed in a field path`
     )
   }
 }
@@ -61,7 +59,7 @@ function parseGroupKey(spec: string): { field: string; bucket: Bucket | null } {
   if (index < 0) return { field: spec, bucket: null }
   const bucket = spec.slice(index + 1)
   if (!(BUCKETS as readonly string[]).includes(bucket)) {
-    throw new ToolError(messages.firebaseQuery(`groupBy "${spec}": the bucket must be one of ${BUCKETS.join(', ')}`))
+    throw fail.firebaseQuery(`groupBy "${spec}": the bucket must be one of ${BUCKETS.join(', ')}`)
   }
   return { field: spec.slice(0, index), bucket: bucket as Bucket }
 }

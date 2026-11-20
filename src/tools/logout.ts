@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { App } from '../app.js'
-import { messages, ToolError } from '../errors.js'
+import { fail } from '../errors.js'
 import { openRealm, realmShape, runTool } from './run.js'
 
 export function registerLogout(server: McpServer, app: App) {
@@ -30,7 +30,7 @@ export function registerLogout(server: McpServer, app: App) {
           }
         }
         ctx.user = user
-        if (failed.length > 0) throw new ToolError(messages.logoutFailed(failed))
+        if (failed.length > 0) throw fail.logoutFailed(failed)
         return { message: single ? `Logged out from ${ctx.realm}.` : 'Logged out from all realms.' }
       })
   )

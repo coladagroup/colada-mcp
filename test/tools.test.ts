@@ -406,6 +406,8 @@ describe('api_get and backend errors', () => {
     const [entry] = h.logs
     expect(Object.keys(entry ?? {})).toEqual([
       'time',
+      'pid',
+      'client',
       'realm',
       'user',
       'workspace',
@@ -415,7 +417,9 @@ describe('api_get and backend errors', () => {
       'path',
       'query',
       'ifMatch',
-      'httpStatus'
+      'httpStatus',
+      'outcome',
+      'reason'
     ])
     expect(entry).toMatchObject({
       realm: 'default',

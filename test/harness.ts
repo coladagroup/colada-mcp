@@ -59,9 +59,24 @@ export function json(status: number, body: unknown, headers: Record<string, stri
   })
 }
 
+export interface FakeUser {
+  uid: string
+  email: string
+  firstName: string
+  lastName: string
+  status: string
+  assignedRoles: string[]
+}
+
+export function fakeUser(uid: string, email: string, roles: string[] = ['campaigns_app_planner']): FakeUser {
+  return { uid, email, firstName: `First-${uid}`, lastName: `Last-${uid}`, status: 'ACTIVE', assignedRoles: roles }
+}
+
 export class FakeWorld {
   now = 1_800_000_000
   tokenTtl = 300
+  ssoEndsAt: number | null = this.now + 36_000
+  readonly users = new Map<string, FakeUser[]>()
   readonly requests: Recorded[] = []
   readonly configRequests: string[] = []
   readonly configStatus = new Map<string, number>()
@@ -160,7 +175,8 @@ export class FakeWorld {
       if (!form.get('code_verifier')) return json(400, { error: 'invalid_grant' })
       return json(200, {
         access_token: this.accessToken(host, realm, realm.homeWorkspace),
-        refresh_token: this.refreshToken(host, realm)
+        refresh_token: this.refreshToken(host, realm),
+        ...this.refreshLifetime()
       })
     }
     const presented = form.get('refresh_token') ?? ''
@@ -169,7 +185,10 @@ export class FakeWorld {
     }
     const requested = form.get('workspace_id')
     const claim = requested && realm.members.includes(requested) ? requested : realm.homeWorkspace
-    const body: Record<string, unknown> = { access_token: this.accessToken(host, realm, claim) }
+    const body: Record<string, unknown> = {
+      access_token: this.accessToken(host, realm, claim),
+      ...this.refreshLifetime()
+    }
     if (realm.rotation) {
       realm.validRefreshTokens.delete(presented)
       body.refresh_token = this.refreshToken(host, realm)
@@ -177,6 +196,22 @@ export class FakeWorld {
       body.refresh_token = presented
     }
     return json(200, body)
+  }
+
+  private refreshLifetime() {
+    return this.ssoEndsAt === null ? {} : { refresh_expires_in: Math.max(0, this.ssoEndsAt - this.now) }
+  }
+
+  private usersPage(workspaceId: string, range: string | undefined) {
+    const match = /^users (\d+)-(\d+)$/.exec(range ?? '')
+    if (!match) return json(400, { message: 'Range header is required' })
+    const all = this.users.get(workspaceId) ?? []
+    const start = Number(match[1])
+    const end = Number(match[2])
+    const page = all.slice(start, end)
+    return json(page.length < all.length ? 206 : 200, page, {
+      'Content-Range': `users ${start}-${end}/${all.length}`
+    })
   }
 
   private backend(url: URL, realm: FakeRealm, headers: Record<string, string>) {
@@ -189,6 +224,9 @@ export class FakeWorld {
     const raw = this.backendRaw.get(url.pathname)
     if (raw) return raw(url, headers)
     if (url.pathname === '/_gw/s-workspaces/api/workspaces') return json(200, realm.workspaces)
+    if (url.pathname === '/_gw/s-access/api/users') {
+      return this.usersPage(String(claims.COLADA_WORKSPACE_ID), headers.range)
+    }
     const match = url.pathname.match(/^\/_gw\/s-events\/api\/events\/([^/]+)$/)
     if (match) {
       const event = this.events.get(String(claims.COLADA_WORKSPACE_ID))?.get(match[1] ?? '')
@@ -237,6 +275,7 @@ export async function createHarness(
     callLog: async (entry) => {
       logs.push(entry)
     },
+    pid: 4242,
     openBrowser: async (url) => {
       opened.push(url)
       await hooks.onOpen?.(url)

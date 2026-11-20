@@ -1,4 +1,4 @@
-import { messages, ToolError } from '../../errors.js'
+import { fail } from '../../errors.js'
 import { splitPath } from './check.js'
 import { APP_VIEW } from './tables.js'
 
@@ -8,7 +8,21 @@ export const WRITE_TOOLS = [
   'campaigns_create_offer',
   'campaigns_update_offer',
   'campaigns_add_budget_rows',
-  'campaigns_create_lead'
+  'campaigns_create_lead',
+  'campaigns_update_lead',
+  'campaigns_update_budget_row',
+  'campaigns_remove_budget_rows'
+] as const
+
+export const LEAD_UPDATE_FIELDS = [
+  'name',
+  'client',
+  'contact',
+  'summary',
+  'closeDate',
+  'status',
+  'chance',
+  'accountManager'
 ] as const
 
 export type WriteTool = (typeof WRITE_TOOLS)[number]
@@ -98,7 +112,19 @@ export const WRITE_RULES: readonly WriteRule[] = [
   rule('W15', 'campaigns_create_lead', 'patch', `deals/${ID}`),
   rule('W16', 'campaigns_create_lead', 'patch', `taskBoards/${ID}`),
   rule('W17', 'campaigns_create_lead', 'patch', `externalIds/${ID}`),
-  rule('W18', 'campaigns_add_budget_rows', 'patch', `history/${ID}`)
+  rule('W18', 'campaigns_add_budget_rows', 'patch', `history/${ID}`),
+  rule('W19', 'campaigns_update_budget_row', 'put', `plannerBudgets/${ID}`),
+  rule('W20', 'campaigns_update_budget_row', 'patch', `planner/${ID}/{field}`, ['total', 'allocated']),
+  rule('W21', 'campaigns_update_budget_row', 'patch', `history/${ID}`),
+  rule('W22', 'campaigns_remove_budget_rows', 'put', `plannerBudgets/${ID}`),
+  rule('W23', 'campaigns_remove_budget_rows', 'patch', `planner/${ID}/{field}`, ['total', 'allocated']),
+  rule('W24', 'campaigns_remove_budget_rows', 'patch', `history/${ID}`),
+  rule('W25', 'campaigns_update_lead', 'patch', `deals/${ID}/{field}`, [
+    ...LEAD_UPDATE_FIELDS,
+    'updatedAt',
+    'updatedBy'
+  ]),
+  rule('W26', 'campaigns_update_lead', 'patch', `planner/${ID}/{field}`, ['name', 'status'])
 ]
 
 export const WRITE_PERMISSIONS: Record<WriteTool, string> = {
@@ -107,7 +133,10 @@ export const WRITE_PERMISSIONS: Record<WriteTool, string> = {
   campaigns_create_offer: 'campaigns_app/offers:manage',
   campaigns_update_offer: 'campaigns_app/offers/settings:manage',
   campaigns_add_budget_rows: 'campaigns_app/offers/budget:manage',
-  campaigns_create_lead: 'campaigns_app/leads:manage'
+  campaigns_create_lead: 'campaigns_app/leads:manage',
+  campaigns_update_lead: 'campaigns_app/leads:manage',
+  campaigns_update_budget_row: 'campaigns_app/offers/budget:manage',
+  campaigns_remove_budget_rows: 'campaigns_app/offers/budget:manage'
 }
 
 export const PERSONAL_INPUT_FIELDS: Record<WriteTool, readonly string[]> = {
@@ -116,7 +145,10 @@ export const PERSONAL_INPUT_FIELDS: Record<WriteTool, readonly string[]> = {
   campaigns_create_offer: ['person', 'participants', 'notes'],
   campaigns_update_offer: ['person', 'participants', 'notes'],
   campaigns_add_budget_rows: [],
-  campaigns_create_lead: ['name', 'contact', 'summary']
+  campaigns_create_lead: ['name', 'contact', 'summary'],
+  campaigns_update_lead: ['name', 'contact', 'summary'],
+  campaigns_update_budget_row: [],
+  campaigns_remove_budget_rows: []
 }
 
 export const IDENTITY_INPUT_FIELDS = [
@@ -141,6 +173,7 @@ interface Entry {
 export interface WriteContext {
   workspace: string
   uid: string
+  checkedUsers?: ReadonlySet<string>
 }
 
 export type WriteRefusal = 'X1' | 'X2' | 'X3' | 'X4' | 'X5' | 'X6' | 'X7' | 'X8' | 'X9' | 'X10' | 'shape' | 'table'
@@ -177,20 +210,20 @@ export function plannedRefusal(tool: WriteTool, planned: PlannedWrite, workspace
 
 export function checkPlannedWrite(tool: WriteTool, planned: PlannedWrite, workspace: string): void {
   if (plannedRefusal(tool, planned, workspace) !== null) {
-    throw new ToolError(messages.writePathNotAllowed(planned.method, planned.path, tool))
+    throw fail.writePathNotAllowed(planned.method, planned.path, tool)
   }
 }
 
 export function checkFirebaseWrite(tool: WriteTool, op: WriteOp, ctx: WriteContext): void {
   if (writeRefusal(tool, op, ctx) !== null) {
-    throw new ToolError(messages.writePathNotAllowed(op.method, op.path === '' ? '/' : op.path, tool))
+    throw fail.writePathNotAllowed(op.method, op.path === '' ? '/' : op.path, tool)
   }
 }
 
 export function checkWritePermission(tool: WriteTool, permissions: ReadonlySet<string>, workspace: string): void {
   for (const permission of [APP_VIEW, WRITE_PERMISSIONS[tool]]) {
     if (!permissions.has(permission)) {
-      throw new ToolError(messages.writeMissingPermission(permission, workspace, tool))
+      throw fail.writeMissingPermission(permission, workspace, tool)
     }
   }
 }
@@ -198,7 +231,7 @@ export function checkWritePermission(tool: WriteTool, permissions: ReadonlySet<s
 export function checkPersonalInput(tool: WriteTool, input: object, allowPersonalData: boolean) {
   if (allowPersonalData) return
   const field = PERSONAL_INPUT_FIELDS[tool].find((name) => (input as Record<string, unknown>)[name] !== undefined)
-  if (field) throw new ToolError(messages.writePersonalField(field))
+  if (field) throw fail.writePersonalField(field)
 }
 
 function entriesOf(op: WriteOp): Entry[] | null {
@@ -236,8 +269,15 @@ function deniedBy(tool: WriteTool, entry: Entry, ctx: WriteContext): WriteRefusa
   if (value === null || value === undefined) return 'X5'
   if (entry.op === 'put' && isEmpty(value)) return 'X6'
   const last = segments[segments.length - 1] ?? ''
-  if (IDENTITY_BODY_FIELDS.includes(last) && value !== ctx.uid) return 'X7'
-  if (isPlainObject(value) && IDENTITY_BODY_FIELDS.some((field) => field in value && value[field] !== ctx.uid)) {
+  const onDeal = root === 'workspaces' && node === 'deals'
+  const identityAllowed = (field: string, given: unknown) =>
+    given === ctx.uid ||
+    (onDeal && field === 'accountManager' && typeof given === 'string' && (ctx.checkedUsers?.has(given) ?? false))
+  if (IDENTITY_BODY_FIELDS.includes(last) && !identityAllowed(last, value)) return 'X7'
+  if (
+    isPlainObject(value) &&
+    IDENTITY_BODY_FIELDS.some((field) => field in value && !identityAllowed(field, value[field]))
+  ) {
     return 'X7'
   }
   if (root === 'externalIds') {

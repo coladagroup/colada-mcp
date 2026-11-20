@@ -1,4 +1,4 @@
-import { messages, ToolError } from '../../errors.js'
+import { fail } from '../../errors.js'
 import type { TimesheetMode } from './check.js'
 import type { NodeRule, Store } from './tables.js'
 
@@ -65,7 +65,7 @@ export interface RowResult {
 }
 
 export function applyRowRules(rule: NodeRule, rest: readonly string[], value: unknown, ctx: RowContext): RowResult {
-  const notFound = () => new ToolError(messages.firebaseNotFound(ctx.store, ctx.path))
+  const notFound = () => fail.firebaseNotFound(ctx.store, ctx.path)
   const ownOnly = rule.ownRows === true && ctx.timesheetMode === 'own'
   const keyHidden = rule.link?.by === 'self' || rule.link?.by === 'key'
   const recordHidden = (record: unknown) => {

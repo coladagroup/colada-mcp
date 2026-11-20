@@ -335,13 +335,12 @@ describe('campaigns_add_timesheet_report', () => {
     expect(text).not.toContain('eyJ')
   })
 
-  it('a refusal before any write logs the planned PUT with httpStatus null', async () => {
+  it('a refusal before any write logs no method and no path, with httpStatus null (AC-6.3)', async () => {
     const { h } = await setup()
     await add(h, { date: '2027-02-01', project: 'p1' })
 
     const [line] = h.logs.filter((entry) => entry.tool === ADD) as unknown as Array<Record<string, unknown>>
-    expect(line).toMatchObject({ method: 'PUT', store: 'rtdb', httpStatus: null })
-    expect(String(line?.path)).toMatch(/^timesheet\/[-0-9A-Za-z_]{20}$/)
+    expect(line).toMatchObject({ method: null, path: null, store: 'rtdb', httpStatus: null, outcome: 'refused' })
   })
 
   it('does not show the description in the output while the flag is off', async () => {
@@ -375,7 +374,7 @@ describe('campaigns_update_timesheet_report', () => {
 
     const lines = h.logs.filter((entry) => entry.tool === UPDATE) as unknown as Array<Record<string, unknown>>
     expect(lines).toHaveLength(1)
-    expect(lines[0]).toMatchObject({ method: 'PUT', path: 'timesheet/t3', httpStatus: null })
+    expect(lines[0]).toMatchObject({ method: null, path: 'timesheet/t3', httpStatus: null, outcome: 'refused' })
   })
 
   it('refuses a re-apply when the entry was moved between read and write, and writes no budget', async () => {
@@ -577,50 +576,29 @@ describe('campaigns_update_timesheet_report', () => {
 })
 
 describe('write paths are checked before any request (point 3 of Gate 1)', () => {
-  it('a write refused after an earlier write still gets its own log line with httpStatus null (AC-P11)', async () => {
+  it('a write refused after an earlier write logs only the sent write, with outcome refused (AC-P11, AC-6.3)', async () => {
     const { h, world } = await setup()
-    const result = await runFirebaseWriteTool(
-      h.app,
-      ADD,
-      undefined,
-      { app: 'campaigns', store: 'rtdb', method: 'PUT', path: 'timesheet/k1', paths: null, ifMatch: true, retries: 0 },
-      async (ctx) => {
-        const writer = await openWriter(h.app, ctx, ADD, { workspace: WS }, [{ method: 'PUT', path: 'timesheet/k1' }])
-        await writer.put('timesheet/k1', { uid: 'k1', owner: ME }, NULL_ETAG, 0)
-        await writer.put('projects/p1', {}, NULL_ETAG, 0)
-        return {}
-      }
-    )
+    const result = await runFirebaseWriteTool(h.app, ADD, {}, 'timesheet/k1', async (ctx) => {
+      const writer = await openWriter(h.app, ctx, ADD, { workspace: WS }, [{ method: 'PUT', path: 'timesheet/k1' }])
+      await writer.put('timesheet/k1', { uid: 'k1', owner: ME }, NULL_ETAG, 0)
+      await writer.put('projects/p1', {}, NULL_ETAG, 0)
+      return {}
+    })
 
     expect(result.isError).toBe(true)
     expect(writes(world)).toHaveLength(1)
     const lines = h.logs.filter((entry) => entry.tool === ADD) as unknown as Array<Record<string, unknown>>
-    expect(lines.map((line) => [line.method, line.path, line.httpStatus])).toEqual([
-      ['PUT', 'timesheet/k1', 200],
-      ['PUT', 'projects/p1', null]
+    expect(lines.map((line) => [line.method, line.path, line.httpStatus, line.outcome, line.reason])).toEqual([
+      ['PUT', 'timesheet/k1', 200, 'refused', 'writePathNotAllowed']
     ])
   })
 
   it('a planned path outside the table is refused before the Firebase mint and before any read', async () => {
     const { h, world } = await setup()
-    const result = await runFirebaseWriteTool(
-      h.app,
-      ADD,
-      undefined,
-      {
-        app: 'campaigns',
-        store: 'rtdb',
-        method: 'PUT',
-        path: 'projects/p1',
-        paths: null,
-        ifMatch: true,
-        retries: 0
-      },
-      async (ctx) => {
-        await openWriter(h.app, ctx, ADD, { workspace: WS }, [{ method: 'PUT', path: 'projects/p1' }])
-        return {}
-      }
-    )
+    const result = await runFirebaseWriteTool(h.app, ADD, {}, 'projects/p1', async (ctx) => {
+      await openWriter(h.app, ctx, ADD, { workspace: WS }, [{ method: 'PUT', path: 'projects/p1' }])
+      return {}
+    })
 
     expect(result.isError).toBe(true)
     expect((result.content[0] as { text: string }).text).toContain(

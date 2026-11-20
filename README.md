@@ -11,15 +11,20 @@ Tools:
 | `get_api_doc` | Lists the backoffice services with API docs and a one-line description of each doc, or returns the OpenAPI YAML of one service. The descriptions come from the backend at run time (`s-ecosystem`); the package holds none. |
 | `api_get` | Sends one GET to a backoffice service (`s-*`) in one workspace. Returns the status, the JSON body and the headers `Content-Range`, `ETag`, `X-ETag`, `Location`. |
 | `api_write` | Sends one POST, PUT or PATCH with a JSON body. **It changes data.** |
+| `api_write_batch` | Sends up to 25 `api_write` requests in one workspace with one approval; checks all items first and stops at the first failure. **It changes data.** |
 | `rtdb_get` | Reads one node of the Campaigns Realtime Database in one workspace. Optional `where`, `fields`, `groupBy` and `sum` run in the MCP, for exact totals. Read only. |
 | `firestore_get` | Reads one document or one page of a collection of the Campaigns Firestore. Read only. |
 | `campaigns_budget` | Computes the budget of one Campaigns project or offer with the app's rules (reserve fees, options, VAT, exchange rates). Read only. |
+| `campaigns_kb_search` | Finds knowledge base items by a part of the name, at any depth. Read only. |
 | `campaigns_add_timesheet_report` | Adds one entry to your own Campaigns timesheet, with its copy in the budget row. **It changes data.** |
 | `campaigns_update_timesheet_report` | Changes or moves one of your own timesheet entries and its budget copy. **It changes data.** |
 | `campaigns_create_offer` | Creates a Campaigns offer, optionally from a lead. **It changes data.** |
 | `campaigns_update_offer` | Changes the settings of one offer. **It changes data.** |
 | `campaigns_create_lead` | Creates a lead in the Pipeline. Needs `COLADA_ALLOW_PERSONAL_DATA=true`. **It changes data.** |
-| `campaigns_add_budget_rows` | Adds knowledge base, free and group rows to an offer budget and recomputes its total. **It changes data.** |
+| `campaigns_update_lead` | Changes the fields of one lead; name and status are copied to its offer. **It changes data.** |
+| `campaigns_add_budget_rows` | Adds knowledge base, free and group rows to an offer budget and recomputes its total; can replace the blank row of a new offer. **It changes data.** |
+| `campaigns_update_budget_row` | Changes or moves one row of an offer budget. **It changes data.** |
+| `campaigns_remove_budget_rows` | Removes rows from an offer budget (not rows with timesheet copies, not the last row). **It changes data.** |
 | `logout` | Ends the stored session. |
 
 > **Breaking change in 0.3.0.** The typed read tools `list_events`, `get_event`, `list_email_templates`, `get_email_template` and `get_registration_form` are removed. Use `api_get` instead (read the service doc with `get_api_doc` first). The server is no longer read-only.
@@ -123,10 +128,10 @@ Campaigns data is not in the backoffice API but in Firebase. `rtdb_get`, `firest
 
 ### Campaigns writes
 
-Six `campaigns_*` tools change Campaigns data in the Realtime Database: timesheet entries, offers, leads and budget rows. Each one writes the same nodes and fields as the matching action in the Campaigns app.
+Nine `campaigns_*` tools change Campaigns data in the Realtime Database: timesheet entries, offers, leads and budget rows. Each one writes the same nodes and fields as the matching action in the Campaigns app.
 
 - They need your Campaigns permissions for that action, as in the app. Timesheet tools change only your own entries.
-- `owner` and other user fields are always you. There is no delete and no undo.
+- `owner`, `updatedBy` and `createdBy` are always you. There is no undo. No tool deletes a Firebase node: `campaigns_remove_budget_rows` removes rows inside one budget only.
 - Ids you pass (project, row, offer, lead, cost center, knowledge base item, unit) must exist in the workspace, or nothing is written.
 - Personal fields (for example a timesheet description or a lead name) are accepted only with `COLADA_ALLOW_PERSONAL_DATA=true`.
 - A change by someone else between read and write is kept: the tool reads again and applies your change on top, at most 3 times.
@@ -137,13 +142,15 @@ Six `campaigns_*` tools change Campaigns data in the Realtime Database: timeshee
 
 The first tool call opens the Colada login in your browser. Log in, then ask Claude to retry. The session is kept in the OS keychain (service `colada-mcp`) and lasts about one working day, also after a restart.
 
+The session ends when your Colada login in the browser ends (about 10 hours on prod), not 10 hours after the MCP login. If you were already logged in to Colada in the browser, the MCP login reuses that browser session and gets only the time it has left. `list_workspaces` shows the end time as `sessionEndsAt`, and in the last 30 minutes every tool answer has a `notice`. Log in fresh in the morning, before long jobs, so a series of writes does not stop in the middle.
+
 Each realm has its own login. The first call with another realm opens a second browser login on that realm's host. Log in there with your own user of that realm.
 
 To end the session, ask Claude to call `logout`. With several hosts and no realm, it logs out from all realms.
 
 ## Call log
 
-Every tool call writes one line to `~/.colada-mcp/calls.log`: time, realm, user, workspace, tool, HTTP status, and for `get_api_doc`, `api_get` and `api_write` also method, service, path, query and whether `If-Match` was sent. For the Firebase tools it holds app, store, path and the query options; `where` is logged without its values. The `campaigns_*` write tools write one line per Firebase write (method, path, retries, HTTP status); a refused write has HTTP status `null`. The log never holds tokens, request or response bodies, or header values. Query values are logged as given, so a filter on a person's email appears there.
+Every tool call writes one line to `~/.colada-mcp/calls.log`: time, process id (`pid`), MCP client name (`client`), realm, user, workspace, tool, HTTP status, `outcome` (`ok`, `login_required`, `refused`, `backend_error` or `conflict`) and for other outcomes a short `reason` code, and for `get_api_doc`, `api_get` and `api_write` also method, service, path, query and whether `If-Match` was sent. For the Firebase tools it holds app, store, path and the query options; `where` is logged without its values. The `campaigns_*` write tools write one line per Firebase write (method, path, retries, HTTP status); a write tool that sent nothing writes one line with `method: null` and HTTP status `null`. The log never holds tokens, request or response bodies, or header values. Query values are logged as given, so a filter on a person's email appears there.
 
 ## Data and privacy
 

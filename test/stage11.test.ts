@@ -113,12 +113,16 @@ describe('If-Match values', () => {
 
 describe('call log through the registered tools', () => {
   const KEYS = [
+    'client',
     'httpStatus',
     'ifMatch',
     'method',
+    'outcome',
     'path',
+    'pid',
     'query',
     'realm',
+    'reason',
     'service',
     'time',
     'tool',

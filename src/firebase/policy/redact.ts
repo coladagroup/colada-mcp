@@ -1,4 +1,4 @@
-import { messages, ToolError } from '../../errors.js'
+import { fail } from '../../errors.js'
 import type { NodeRule } from './tables.js'
 
 export interface Redacted {
@@ -69,7 +69,5 @@ export function assertUsable(field: string, option: string, rule: NodeRule, allo
   let hit: Pattern | undefined
   for (let length = 2; length <= path.length && !hit; length++) hit = matching(patterns, path.slice(0, length))
   if (!hit) return
-  throw new ToolError(
-    hit.always ? messages.firebaseSecretField(field, option) : messages.firebaseHiddenField(field, option)
-  )
+  throw hit.always ? fail.firebaseSecretField(field, option) : fail.firebaseHiddenField(field, option)
 }

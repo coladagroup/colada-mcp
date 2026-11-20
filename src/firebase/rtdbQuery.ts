@@ -1,4 +1,4 @@
-import { messages, ToolError } from '../errors.js'
+import { fail } from '../errors.js'
 import type { Scalar } from './localOps.js'
 
 export interface RtdbQuery {
@@ -31,18 +31,18 @@ export function rtdbQueryString(query: RtdbQuery): string {
   )
   if (query.shallow) {
     if (query.orderBy !== undefined || filters.length) {
-      throw new ToolError(messages.firebaseQuery('shallow cannot be combined with other options'))
+      throw fail.firebaseQuery('shallow cannot be combined with other options')
     }
     return 'shallow=true'
   }
   if (filters.length && query.orderBy === undefined) {
-    throw new ToolError(messages.firebaseQuery(`${filters.join(', ')} need orderBy`))
+    throw fail.firebaseQuery(`${filters.join(', ')} need orderBy`)
   }
   if (query.limitToFirst !== undefined && query.limitToLast !== undefined) {
-    throw new ToolError(messages.firebaseQuery('use limitToFirst or limitToLast, not both'))
+    throw fail.firebaseQuery('use limitToFirst or limitToLast, not both')
   }
   if (query.orderBy !== undefined && !ORDER_BY.test(query.orderBy)) {
-    throw new ToolError(messages.firebaseQuery(`orderBy "${query.orderBy}" must be $key, $value or a child name`))
+    throw fail.firebaseQuery(`orderBy "${query.orderBy}" must be $key, $value or a child name`)
   }
   const parts: string[] = []
   if (query.orderBy !== undefined) parts.push(`orderBy=${encodeURIComponent(JSON.stringify(query.orderBy))}`)

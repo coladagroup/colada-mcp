@@ -115,7 +115,7 @@ describe('ApiClient.request (CONTRACT §2, §5)', () => {
   })
 
   describe('500 KB limit (AC28)', () => {
-    const tooLarge = `The response of GET ${PATH} is larger than 500 KB and is not returned. Ask for less: a smaller Range (for example "Range: events 0-20"), a narrower query, or a projection in the path (for example /api/events:(title,start)).`
+    const tooLarge = `The response of GET ${PATH} is larger than 500 KB and is not returned. Ask for less: "select" with only the paths you need (for example ["id", "status"]), a smaller Range (for example "Range: events 0-20"), a narrower query, or a projection in the path (for example /api/events:(title,start)).`
     const jsonOfSize = (bytes: number) => `"${'a'.repeat(bytes - 2)}"`
     const streamed = (text: string) =>
       new Response(
@@ -299,6 +299,8 @@ describe('callBackend (CONTRACT §2, §5)', () => {
 describe('call log for generic calls (AC31, CONTRACT §7)', () => {
   const KEYS = [
     'time',
+    'pid',
+    'client',
     'realm',
     'user',
     'workspace',
@@ -308,7 +310,9 @@ describe('call log for generic calls (AC31, CONTRACT §7)', () => {
     'path',
     'query',
     'ifMatch',
-    'httpStatus'
+    'httpStatus',
+    'outcome',
+    'reason'
   ]
   const input = {
     method: 'PUT',
@@ -475,6 +479,8 @@ describe('second opinion: log fields are picked, not spread', () => {
     const line = JSON.stringify(h.logs[0])
     expect(Object.keys(h.logs[0] ?? {})).toEqual([
       'time',
+      'pid',
+      'client',
       'realm',
       'user',
       'workspace',
@@ -484,7 +490,9 @@ describe('second opinion: log fields are picked, not spread', () => {
       'path',
       'query',
       'ifMatch',
-      'httpStatus'
+      'httpStatus',
+      'outcome',
+      'reason'
     ])
     expect(line).not.toContain('BODYVALUE')
     expect(line).not.toContain('IFMATCHVALUE')

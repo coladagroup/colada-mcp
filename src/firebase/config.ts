@@ -1,4 +1,4 @@
-import { messages, ToolError } from '../errors.js'
+import { fail } from '../errors.js'
 
 export interface FirebaseConfig {
   apiKey: string
@@ -15,9 +15,7 @@ export function parseFirebaseConfig(workspace: string, body: unknown): FirebaseC
   const field = (name: string, pattern: RegExp, shown: (value: string) => string) => {
     const value = config[name]
     if (typeof value !== 'string' || !pattern.test(value)) {
-      throw new ToolError(
-        messages.firebaseBadConfig(workspace, name, typeof value === 'string' ? shown(value) : String(value))
-      )
+      throw fail.firebaseBadConfig(workspace, name, typeof value === 'string' ? shown(value) : String(value))
     }
     return value
   }

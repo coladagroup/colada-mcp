@@ -1,5 +1,5 @@
 import type { App } from '../../../app.js'
-import { messages, ToolError } from '../../../errors.js'
+import { fail, messages, ToolError } from '../../../errors.js'
 import type { FirebaseWriteToolContext } from '../../../tools/run.js'
 import { isHiddenProject } from '../../policy/rows.js'
 import { checkPersonalInput, type PlannedWrite, type WriteTool } from '../../policy/writes.js'
@@ -34,7 +34,7 @@ async function booked(session: Session, project: string): Promise<Booked> {
   const stored = (await session.writer.read(`projects/${project}`)).value
   if (stored !== null && typeof stored === 'object') {
     if (isHiddenProject(stored, session.uid, session.role)) {
-      throw new ToolError(messages.writeHidden('Project', project))
+      throw fail.writeHidden('Project', project)
     }
     return { kind: 'project', record: stored as Record<string, unknown> }
   }
@@ -42,9 +42,9 @@ async function booked(session: Session, project: string): Promise<Booked> {
 }
 
 function checkBooked(found: Booked, project: string, entity: unknown, workspace: string): void {
-  if (found === null) throw new ToolError(messages.writeMissingReference('Project', project, workspace))
+  if (found === null) throw fail.writeMissingReference('Project', project, workspace)
   if (found.kind === 'ticket' && typeof entity === 'string' && entity !== '') {
-    throw new ToolError(messages.writeTicketEntity(project))
+    throw fail.writeTicketEntity(project)
   }
 }
 
@@ -55,7 +55,7 @@ function legacyOf(found: Booked): unknown {
 async function readBudget(session: Session, place: CopyPlace, legacy: unknown): Promise<Versioned> {
   const stored = await session.writer.read(`budgets/${place.project}`)
   if (!hasRow(budgetList(stored.value, legacy), place.row)) {
-    throw new ToolError(messages.writeMissingReference('Budget row', place.row, session.writer.workspace))
+    throw fail.writeMissingReference('Budget row', place.row, session.writer.workspace)
   }
   return stored
 }
@@ -102,7 +102,12 @@ export async function addTimesheetReport(
   const budget = place && (await readBudget(session, place, legacy))
 
   const saved = await session.writer.put(`timesheet/${key}`, entry, NULL_ETAG, 0)
-  if (!saved.saved) throw new ToolError(messages.writeFailed('PUT', `timesheet/${key}`, 412, 'the key exists already'))
+  if (!saved.saved)
+    throw new ToolError(
+      messages.writeFailed('PUT', `timesheet/${key}`, 412, 'the key exists already'),
+      'conflict',
+      'keyExists'
+    )
   let retries = 0
   if (place && budget) {
     try {
@@ -135,7 +140,7 @@ export async function updateTimesheetReport(
 ) {
   checkPersonalInput(UPDATE_TIMESHEET, input, app.deps.allowPersonalData)
   const { realm: _realm, workspace: _workspace, key, ...fields } = input
-  if (Object.values(fields).every((value) => value === undefined)) throw new ToolError(messages.writeNoFields('key'))
+  if (Object.values(fields).every((value) => value === undefined)) throw fail.writeNoFields('key')
   assertId(key)
   if (fields.project !== undefined) assertId(fields.project)
   if (fields.entity) assertId(fields.entity)
@@ -149,9 +154,9 @@ export async function updateTimesheetReport(
   const first = await session.writer.read(`timesheet/${key}`)
   const own = (current: unknown): Entry => {
     if (current === null || typeof current !== 'object') {
-      throw new ToolError(messages.writeMissingReference('Timesheet entry', key, workspace))
+      throw fail.writeMissingReference('Timesheet entry', key, workspace)
     }
-    if ((current as Entry).owner !== session.uid) throw new ToolError(messages.writeForeignEntry(key))
+    if ((current as Entry).owner !== session.uid) throw fail.writeForeignEntry(key)
     return current as Entry
   }
   const stored = own(first.value)
@@ -172,8 +177,7 @@ export async function updateTimesheetReport(
     `timesheet/${key}`,
     (current) => {
       const fresh = own(current)
-      if (PLACE_FIELDS.some((field) => fresh[field] !== stored[field]))
-        throw new ToolError(messages.writeEntryMoved(key))
+      if (PLACE_FIELDS.some((field) => fresh[field] !== stored[field])) throw fail.writeEntryMoved(key)
       return mergeEntry(fresh, fields)
     },
     first

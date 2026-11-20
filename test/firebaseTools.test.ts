@@ -295,7 +295,7 @@ describe('rtdb_get', () => {
       tags: Object.fromEntries(Array.from({ length: 3000 }, (_, i) => [`g${i}`, { name: 'n'.repeat(200), kind: 'a' }]))
     }
     expect((await rtdb(h, { path: 'tags' })).body.error).toBe(
-      'The result is larger than 500 KB and is not returned. Use "fields", "where", "groupBy" or a narrower path.'
+      'The result is larger than 500 KB and is not returned. Use "select", "fields", "where", "groupBy" or a narrower path.'
     )
     expect((await rtdb(h, { path: 'tags', groupBy: ['kind'] })).body.total).toEqual({ count: 3000, sums: {} })
   })
@@ -741,11 +741,38 @@ describe('PR #13 code review findings', () => {
     expect(firestoreRequests(world).at(-1)?.url.searchParams.getAll('mask.fieldPaths')).toEqual([])
   })
 
+  it('reads the cost center tree under costCenters/list, as the conventions say (phase 6, B3)', async () => {
+    const { h, fw } = await setup()
+    ;(fw.rtdb[WS_A] as Record<string, unknown>).costCenters = {
+      list: [{ uid: 'cc1', name: 'HQ', children: [{ uid: 'cc2', name: 'Sales' }] }],
+      updatedAt: '2026-10-01T10:00:00.000Z'
+    }
+    const result = await rtdb(h, { path: 'costCenters/list' })
+
+    expect(result.isError).toBe(false)
+    expect(JSON.stringify(result.body)).toContain('"uid":"cc2"')
+  })
+
   it('10: the call log holds exactly the documented keys', async () => {
     const { h } = await setup()
     await rtdb(h, { path: 'tags' })
     expect(Object.keys(h.logs.at(-1) ?? {}).sort()).toEqual(
-      ['app', 'httpStatus', 'path', 'query', 'realm', 'store', 'time', 'tool', 'user', 'workspace'].sort()
+      [
+        'app',
+        'client',
+        'httpStatus',
+        'outcome',
+        'path',
+        'pid',
+        'query',
+        'realm',
+        'reason',
+        'store',
+        'time',
+        'tool',
+        'user',
+        'workspace'
+      ].sort()
     )
   })
 

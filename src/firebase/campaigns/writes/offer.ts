@@ -1,4 +1,4 @@
-import { messages, ToolError } from '../../../errors.js'
+import { fail } from '../../../errors.js'
 import { defined } from './common.js'
 
 export const OFFER_STATUSES = [
@@ -42,7 +42,7 @@ export function checkEventFormats(input: Fields): void {
   for (const field of DATE_PAIRS.flat()) {
     const value = input[field]
     if (value !== undefined && (typeof value !== 'string' || !isEventTime(value))) {
-      throw new ToolError(messages.writeBadDate(`${field} must be yyyy-MM-ddTHH:mm`))
+      throw fail.writeBadDate(`${field} must be yyyy-MM-ddTHH:mm`)
     }
   }
 }
@@ -53,14 +53,14 @@ export function checkEventPairs(input: Fields, stored: Fields): void {
     const start = storedTime(input[startField] ?? stored[startField], '00:00')
     const end = storedTime(input[endField] ?? stored[endField], '23:59')
     if (start !== null && end !== null && start > end) {
-      throw new ToolError(messages.writeBadDate(`${startField} is after ${endField}`))
+      throw fail.writeBadDate(`${startField} is after ${endField}`)
     }
   }
 }
 
 export function requireFields(fields: Fields, names: readonly string[]): void {
   const missing = names.find((name) => fields[name] === undefined || fields[name] === '' || fields[name] === null)
-  if (missing) throw new ToolError(messages.writeMissingField(missing))
+  if (missing) throw fail.writeMissingField(missing)
 }
 
 export function offerNumber(counter: number, year: number): string {
@@ -151,6 +151,9 @@ export function findTreeNode(tree: unknown, uid: string): Fields | null {
   return null
 }
 
-export function hasTreeNode(tree: unknown, uid: string): boolean {
-  return findTreeNode(tree, uid) !== null
+export function treeNodes(tree: unknown): Fields[] {
+  const nodes = Array.isArray(tree) ? tree : tree !== null && typeof tree === 'object' ? Object.values(tree) : []
+  return nodes
+    .filter((node): node is Fields => node !== null && typeof node === 'object')
+    .flatMap((node) => [node, ...treeNodes(node.children)])
 }

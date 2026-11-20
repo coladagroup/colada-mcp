@@ -36,13 +36,28 @@ describe('server instructions and conventions', () => {
     const tool = await h.client.callTool({ name: 'get_conventions', arguments: {} })
     const text = (tool.content as Array<{ text: string }>)[0]?.text ?? ''
     expect(text).toContain('## Campaigns writes')
+    for (const section of [
+      'Email log (s-email-logger)',
+      'Event resources (s-events-resources)',
+      'Directory contacts (s-directory-contacts)',
+      'emailTemplate._id',
+      'rn_<name> works only when the name has the form of a UUID',
+      'A PATCH without displayName is refused (400)',
+      'To book time as another user, call logout'
+    ]) {
+      expect(text).toContain(section)
+    }
     for (const name of [
       'campaigns_add_timesheet_report',
       'campaigns_update_timesheet_report',
       'campaigns_create_offer',
       'campaigns_update_offer',
       'campaigns_create_lead',
-      'campaigns_add_budget_rows'
+      'campaigns_update_lead',
+      'campaigns_add_budget_rows',
+      'campaigns_update_budget_row',
+      'campaigns_remove_budget_rows',
+      'campaigns_kb_search'
     ]) {
       expect(text).toContain(name)
     }

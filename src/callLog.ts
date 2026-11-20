@@ -1,6 +1,7 @@
 import { appendFile, mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import type { ErrorOutcome } from './errors.js'
 
 export interface ApiCall {
   method: string
@@ -27,16 +28,33 @@ export interface FirebaseWriteCall {
   retries: number
 }
 
+export interface NoWriteCall {
+  app: string
+  store: 'rtdb'
+  method: null
+  path: string | null
+  paths: null
+  ifMatch: false
+  retries: 0
+}
+
+export type CallOutcome = 'ok' | 'preview' | ErrorOutcome
+
 interface CallLogBase {
   time: string
+  pid: number
+  client: string | null
   realm: string | null
   user: string | null
   workspace: string | null
   tool: string
   httpStatus: number | null
+  outcome: CallOutcome
+  reason: string | null
 }
 
-export type CallLogEntry = CallLogBase & ({ params: unknown } | ApiCall | FirebaseCall | FirebaseWriteCall)
+export type CallLogEntry = CallLogBase &
+  ({ params: unknown } | ApiCall | FirebaseCall | FirebaseWriteCall | NoWriteCall)
 
 export type CallLog = (entry: CallLogEntry) => Promise<void>
 

@@ -4,6 +4,7 @@ export interface TokenResult {
   status: number
   accessToken?: string
   refreshToken?: string
+  refreshExpiresIn?: number
   error?: string
 }
 
@@ -34,6 +35,7 @@ export async function postToken(
     status: response.status,
     accessToken: typeof json.access_token === 'string' ? json.access_token : undefined,
     refreshToken: typeof json.refresh_token === 'string' ? json.refresh_token : undefined,
+    refreshExpiresIn: typeof json.refresh_expires_in === 'number' ? json.refresh_expires_in : undefined,
     error: typeof json.error === 'string' ? json.error : undefined
   }
 }
