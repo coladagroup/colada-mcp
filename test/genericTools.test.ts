@@ -368,3 +368,39 @@ describe('get_api_doc (AC29)', () => {
     expect(result.body.error).toBe('The API doc s-events/events is larger than 500 KB and is not returned.')
   })
 })
+
+describe('api_write: departments of a new event', () => {
+  const EVENTS = '/_gw/s-events/api/events'
+  const NEW_EVENT = 'eeeeeeee-0000-0000-0000-0000000000ff'
+  const createEvent = (h: Harness) =>
+    h.call('api_write', { workspace: WS_A, method: 'POST', service: 's-events', path: '/api/events', body: {} })
+
+  it('after POST s-events /api/events returns the next step with the new event id', async () => {
+    const h = await setup()
+    h.world.backendRaw.set(EVENTS, () => json(201, { id: NEW_EVENT }, { Location: `events/${NEW_EVENT}` }))
+    const result = await createEvent(h)
+    expect(result.body.status).toBe(201)
+    expect(result.body.nextStep).toContain(`PUT s-orgstructure /api/orgstructure/events/${NEW_EVENT}/departments`)
+    expect(result.body.nextStep).toContain('GET s-orgstructure /api/orgstructure/users/me/departments')
+  })
+
+  it('takes the new event id from Location when the body has none', async () => {
+    const h = await setup()
+    h.world.backendRaw.set(EVENTS, () => json(201, undefined, { Location: `events/${NEW_EVENT}` }))
+    const result = await createEvent(h)
+    expect(result.body.nextStep).toContain(`/api/orgstructure/events/${NEW_EVENT}/departments`)
+  })
+
+  it('other writes get no next step', async () => {
+    const h = await setup()
+    h.world.backendRaw.set(RESOURCE, () => json(201, { id: 'r1' }))
+    const result = await h.call('api_write', {
+      workspace: WS_A,
+      method: 'POST',
+      service: 's-events-resources',
+      path: '/api/events/e1/resources/r1',
+      body: {}
+    })
+    expect(result.body.nextStep).toBeUndefined()
+  })
+})

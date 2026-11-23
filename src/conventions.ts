@@ -58,7 +58,7 @@ The api-doc of each service (get_api_doc) is the source for routes and bodies. T
 Events (s-events)
 - POST /api/events needs title, start, end (local date-time without offset, 2026-10-09T10:00), timeZone (Europe/Zurich), lang (a list, ["de"]), guestSchema and applications.
 - PATCH /api/events/{id} needs title, start, end, timeZone, lang, applications and isMediaContentRequestEnabled every time, and does not check If-Match. Read the event, change it, send all of it.
-- In a workspace with org structure, a new event needs departments, or users cannot see it: PUT s-orgstructure /api/orgstructure/events/{event_id}/departments with a JSON array of department ids. Your own departments: GET /api/orgstructure/users/me/departments.
+- In a workspace with org structure (feature toggle modules:organizational-structure), every event created with POST /api/events needs departments right after the create. Without them users cannot see the event, and copying it (POST /api/events/{id}/copies) fails with 502 although the copy is created. Set them with PUT s-orgstructure /api/orgstructure/events/{event_id}/departments (for an event of a campaign: /api/orgstructure/campaigns/{campaign_id}/events/{event_id}/departments) and a JSON array of department ids. Your own departments: GET /api/orgstructure/users/me/departments; when it returns none, the workspace has no org structure and you skip this step. api_write reminds you with nextStep after the create.
 
 Email templates (s-email-templates)
 - One template: GET or PATCH /api/events/{event_id}/emailtemplates/{template_id}. PATCH needs If-Match and displayName.

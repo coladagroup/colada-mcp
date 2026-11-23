@@ -2,6 +2,7 @@ import { callBackend } from '../api/backend.js'
 import type { App } from '../app.js'
 import { messages } from '../errors.js'
 import { type CheckedRequest, MAX_RESPONSE_BYTES } from '../policy/index.js'
+import { newEventNextStep } from './newEventDepartments.js'
 import { type ApiToolContext, openRealm, type ToolContext } from './run.js'
 
 export interface ApiCallInput {
@@ -61,11 +62,17 @@ export async function sendApiCall(
     },
     ctx.state
   )
+  const nextStep = newEventNextStep(checked.method, input, {
+    status: response.status,
+    body: response.body,
+    headers: response.returnedHeaders
+  })
   return {
     status: response.status,
     headers: response.returnedHeaders,
     body: response.body,
-    ...(response.bodyNote === undefined ? {} : { bodyNote: response.bodyNote })
+    ...(response.bodyNote === undefined ? {} : { bodyNote: response.bodyNote }),
+    ...(nextStep === undefined ? {} : { nextStep })
   }
 }
 

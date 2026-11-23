@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1
+
+### Changes
+- `api_write` and `api_write_batch` return `nextStep` after `POST s-events /api/events`: set the departments of the new event in s-orgstructure. Without them, users cannot see the event and copying it answers 502 although the copy is created.
+- `get_conventions`: the org structure rule names the feature toggle, the campaign path and when to skip the step.
+
 ## 0.7.0
 
 ### New tools

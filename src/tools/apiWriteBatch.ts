@@ -80,7 +80,13 @@ export function registerApiWriteBatch(server: McpServer, app: App) {
               checked[index] as CheckedRequest
             )
             Object.assign(line, { httpStatus: response.status, outcome: 'ok', reason: null })
-            results.push({ item: index + 1, result: 'done', status: response.status, headers: response.headers })
+            results.push({
+              item: index + 1,
+              result: 'done',
+              status: response.status,
+              headers: response.headers,
+              ...(response.nextStep === undefined ? {} : { nextStep: response.nextStep })
+            })
           } catch (err) {
             const error = err instanceof ToolError ? err : new ToolError(`Unexpected error: ${(err as Error).message}`)
             const reason = err instanceof ToolError ? err.reason : 'unexpected'

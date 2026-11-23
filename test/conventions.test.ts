@@ -81,3 +81,14 @@ describe('server instructions and conventions', () => {
     expect(h.world.backendRequests()).toEqual([])
   })
 })
+
+describe('conventions: departments of a new event', () => {
+  it('says that a new event needs departments and that a copy fails without them', async () => {
+    const h = await setup()
+    const tool = await h.client.callTool({ name: 'get_conventions', arguments: {} })
+    const text = (tool.content as Array<{ text: string }>)[0]?.text ?? ''
+    expect(text).toContain('modules:organizational-structure')
+    expect(text).toContain('fails with 502 although the copy is created')
+    expect(text).toContain('/api/orgstructure/campaigns/{campaign_id}/events/{event_id}/departments')
+  })
+})
