@@ -175,3 +175,16 @@ describe('api_write_batch preview (AC-6.6)', () => {
     expect(batchLines(h).map((line) => line.outcome)).toEqual(['preview', 'preview', 'refused', 'preview', 'preview'])
   })
 })
+
+describe('api_write_batch: departments of a new event', () => {
+  it('a created event item carries the next step', async () => {
+    const h = await setup()
+    const id = 'eeeeeeee-0000-0000-0000-0000000000ff'
+    h.world.backendRaw.set('/_gw/s-events/api/events', () => json(201, { id }))
+    const result = await h.call('api_write_batch', {
+      workspace: WS_A,
+      items: [{ method: 'POST', service: 's-events', path: '/api/events', body: {} }]
+    })
+    expect((result.body.items as Array<{ nextStep?: string }>)[0]?.nextStep).toContain(`/api/orgstructure/events/${id}/departments`)
+  })
+})
