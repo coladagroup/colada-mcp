@@ -21,6 +21,10 @@ export function parseHosts(env: Record<string, string | undefined>): string[] {
   return hosts
 }
 
+export function parseNoBrowser(env: Record<string, string | undefined>): boolean {
+  return env.COLADA_NO_BROWSER === '1'
+}
+
 export function parseAllowPersonalData(env: Record<string, string | undefined>): boolean {
   return env.COLADA_ALLOW_PERSONAL_DATA === 'true'
 }

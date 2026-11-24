@@ -19,6 +19,8 @@ export class ResponseTooLargeError extends ToolError {
 export const messages = {
   loginOpened: (realm: string, host: string, url: string) =>
     `Login opened in your browser for realm ${realm} on ${host}. Finish it, then call the tool again. If no browser tab opened, open this URL: ${url}`,
+  noBrowserLogin: () =>
+    'Colada sign-in needed; this server runs without a browser. Sign in from an interactive session first.',
   loginInProgress: () => 'Login is in progress in your browser. Finish it, then call the tool again.',
   loggedOut: () => 'The session ended while this call was running. Call the tool again.',
   noAccess: (workspace: string, realm: string) =>
@@ -198,6 +200,7 @@ type MessageKey = keyof typeof messages
 
 const OUTCOMES: Partial<Record<MessageKey, ErrorOutcome>> = {
   loginOpened: 'login_required',
+  noBrowserLogin: 'login_required',
   loginInProgress: 'login_required',
   loggedOut: 'login_required',
   realmUnknown: 'backend_error',

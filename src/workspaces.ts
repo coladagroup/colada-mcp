@@ -17,8 +17,22 @@ export interface ResolvedWorkspace {
   name: string | null
 }
 
+const MAX_LISTED = 10
+const FULL_LIST = 'Call list_workspaces for the full list.'
+
 function lines(workspaces: WorkspaceInfo[]): string {
-  return workspaces.map((w) => `${w.id} — ${w.name}`).join('\n')
+  const listed = workspaces.slice(0, MAX_LISTED).map((w) => `${w.id} — ${w.name}`)
+  if (workspaces.length > MAX_LISTED) listed.push(`… and ${workspaces.length - MAX_LISTED} more.`)
+  return listed.join('\n')
+}
+
+function closeMatches(input: string, workspaces: WorkspaceInfo[]): WorkspaceInfo[] {
+  const needle = input.trim().toLowerCase()
+  if (needle === '') return []
+  const contains = workspaces.filter((w) => w.name.toLowerCase().includes(needle))
+  const prefix = needle.slice(0, 3)
+  const sharePrefix = workspaces.filter((w) => !contains.includes(w) && w.name.toLowerCase().startsWith(prefix))
+  return [...contains, ...sharePrefix]
 }
 
 export class WorkspaceDirectory {
@@ -57,14 +71,16 @@ export class WorkspaceDirectory {
     const [match] = matches
     if (match && matches.length === 1) return { id: match.id, name: match.name }
     if (matches.length === 0) {
+      const close = closeMatches(input, this.cache ?? [])
+      const candidates = close.length > 0 ? `Close matches:\n${lines(close)}` : 'No close matches.'
       throw new ToolError(
-        `Workspace "${input}" matches no workspace. Your workspaces:\n${lines(this.cache ?? [])}`,
+        `The "workspace" parameter "${input}" matches no workspace. ${candidates}\n${FULL_LIST}`,
         'refused',
         'workspaceNoMatch'
       )
     }
     throw new ToolError(
-      `Workspace "${input}" matches ${matches.length} workspaces:\n${lines(matches)}`,
+      `The "workspace" parameter "${input}" matches ${matches.length} workspaces; pass the id:\n${lines(matches)}`,
       'refused',
       'workspaceAmbiguous'
     )
@@ -76,7 +92,7 @@ export class WorkspaceDirectory {
     if (only && workspaces.length === 1) return { id: only.id, name: only.name }
     if (!only) throw fail.noWorkspace(this.session.realm)
     throw new ToolError(
-      `Pass "workspace": you have ${workspaces.length} workspaces:\n${lines(workspaces)}`,
+      `Pass the "workspace" parameter: you have ${workspaces.length} workspaces. ${FULL_LIST}`,
       'refused',
       'workspaceRequired'
     )

@@ -298,11 +298,13 @@ describe('workspaces', () => {
 
     const none = await h.call('api_get', { workspace: 'Nope', ...eventPath(EVENT_A) })
     expect(none.body.error).toBe(
-      `Workspace "Nope" matches no workspace. Your workspaces:\n${WS_A} — Same\n${WS_B} — Same`
+      'The "workspace" parameter "Nope" matches no workspace. No close matches.\nCall list_workspaces for the full list.'
     )
 
     const two = await h.call('api_get', { workspace: 'Same', ...eventPath(EVENT_A) })
-    expect(two.body.error).toBe(`Workspace "Same" matches 2 workspaces:\n${WS_A} — Same\n${WS_B} — Same`)
+    expect(two.body.error).toBe(
+      `The "workspace" parameter "Same" matches 2 workspaces; pass the id:\n${WS_A} — Same\n${WS_B} — Same`
+    )
 
     expect(h.world.backendRequests().filter((r) => r.url.pathname.includes('/s-events/'))).toHaveLength(0)
   })
@@ -317,7 +319,9 @@ describe('workspaces', () => {
 
     const many = await setup()
     const fail = await many.call('api_get', { ...eventPath(EVENT_A) })
-    expect(fail.body.error).toBe(`Pass "workspace": you have 2 workspaces:\n${WS_A} — Alpha\n${WS_B} — Beta`)
+    expect(fail.body.error).toBe(
+      'Pass the "workspace" parameter: you have 2 workspaces. Call list_workspaces for the full list.'
+    )
   })
 
   it('AC5f: parallel calls for A and B use separate tokens', async () => {
@@ -363,7 +367,7 @@ describe('api_get and backend errors', () => {
     h.world.backendStatus.set(`/_gw/s-events/api/events/${EVENT_A}`, 403)
     const result = await h.call('api_get', { workspace: WS_A, ...eventPath(EVENT_A) })
     expect(result.body.error).toBe(
-      `GET /_gw/s-events/api/events/${EVENT_A} was refused (403): your role lacks access to this endpoint. Ask an admin for the permission.`
+      `GET /_gw/s-events/api/events/${EVENT_A} was refused (403): your role lacks access to this endpoint. Ask an admin for the permission. The backend gave no reason.`
     )
     expect(h.logs.at(-1)?.httpStatus).toBe(403)
   })

@@ -76,6 +76,10 @@ Email log (s-email-logger)
 Event resources (s-events-resources)
 - GET .../resources/rn_<name> works only when the name has the form of a UUID. Other names give 404; use the resource id.
 - PUT works only with the id: there is no PUT route for rn_<name> (404). PUT .../resources/{id} needs no If-Match and answers X-ETag 0. Send the whole record you read: type, displayNameL10n, the is* flags, cancellationFees and options are required. For allocation context PARTICIPANT_GROUPS it resets isRequestEnabled, requestStart and requestEnd.
+- DELETE /api/events/{e}/resources/{id} removes one resource (ids are UUIDs). The service ignores {e}, so read the resource first and check it belongs to that event. It answers 400 while the request window is active or the resource is used or has slots. Ask the user first; it cannot be undone.
+
+Staffing requirements (s-staffing, needs COLADA_ALLOW_PERSONAL_DATA=true)
+- DELETE /api/events/{e}/phases/{p}/requirements/{id} removes one requirement (ids are UUIDs; 204). It answers 409 REQUIREMENT_IN_USE while any assignment points at it, also a cancelled or declined one; assignments are not removed. Ask the user first; it cannot be undone.
 
 Directory contacts (s-directory-contacts)
 - GET /api/contacts needs Range ("Range: contacts 0-100"). Without it the service answers 400 with an empty body.
@@ -83,7 +87,7 @@ Directory contacts (s-directory-contacts)
 Registration forms (s-events-forms)
 - Base: /api/events/{event_id}/formtemplates/registration. PUT .../structure, PUT .../settings and PUT .../published need If-Match.
 - structure holds pages; the elements of a page are a map per language. A new field must go into the list of every language of the page. Send the whole structure back.
-- PUT .../published makes the form public to guests at once; DELETE .../published unpublishes it (the only DELETE this MCP sends). Ask the user first for both.
+- PUT .../published makes the form public to guests at once; DELETE .../published unpublishes it. Ask the user first for both.
 
 Guest schema of an event (s-events-guests, allowed without personal data)
 - GET /api/events/{e}/guestschema lists the fields an event uses. PUT .../guestschema/properties sets them, PUT .../guestschema/synced pulls the workspace definitions. They need If-Match greater than 0.

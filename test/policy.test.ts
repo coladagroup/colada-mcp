@@ -164,6 +164,7 @@ const FULL_BLOCK_SERVICES = [
   's-events-payments',
   's-guest-nominations',
   's-assistant-scanner',
+  's-staffing',
   's-printers',
   's-emailcomposer',
   's-email-logger',
@@ -197,7 +198,9 @@ describe('test cases cover the CONTRACT §4 tables', () => {
     )
     expect([...FULL_BLOCK_SERVICES, ...SERVICES_WITH_ALLOWED_ROUTES]).toEqual(PERSONAL_DATA_SERVICES)
     expect(DELETE_ALLOWLIST.map((rule) => [rule.id, rule.service, rule.method])).toEqual([
-      ['X01', 's-events-forms', 'DELETE']
+      ['X01', 's-events-forms', 'DELETE'],
+      ['X02', 's-staffing', 'DELETE'],
+      ['X03', 's-events-resources', 'DELETE']
     ])
   })
 

@@ -63,7 +63,11 @@ export async function callBackend(
     return { ...response, returnedHeaders: returnedHeaders(response.headers) }
   }
   const error = failure(method, request, response.status)
-  throw new ToolError(withServiceText(error.message, response.errorText), error.outcome, error.reason)
+  const noReason = hasOwnText(request, response.status) ? '' : ' The backend gave no reason.'
+  const message = response.errorText
+    ? `${error.message} The service said: ${response.errorText}`
+    : error.message + noReason
+  throw new ToolError(message, error.outcome, error.reason)
 }
 
 function failure(method: string, request: BackendRequest, status: number): ToolError {
@@ -79,8 +83,12 @@ function failure(method: string, request: BackendRequest, status: number): ToolE
   return fail.failed(method, request.path, status)
 }
 
-function withServiceText(message: string, errorText: string | undefined): string {
-  return errorText ? `${message} The service said: ${errorText}` : message
+function hasOwnText(request: BackendRequest, status: number): boolean {
+  return (
+    (status === 403 && request.forbidden !== undefined) ||
+    (status === 404 && request.notFound !== undefined) ||
+    (status === 500 && request.serverError !== undefined)
+  )
 }
 
 function returnedHeaders(headers: Headers): Record<string, string> {

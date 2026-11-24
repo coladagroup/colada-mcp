@@ -1,4 +1,3 @@
-import { createRequire } from 'node:module'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { App } from './app.js'
 import { CONVENTIONS, CONVENTIONS_URI, INSTRUCTIONS } from './conventions.js'
@@ -18,8 +17,7 @@ import { registerListWorkspaces } from './tools/listWorkspaces.js'
 import { registerLogout } from './tools/logout.js'
 import { registerOfferTools } from './tools/offerTools.js'
 import { registerTimesheetTools } from './tools/timesheetTools.js'
-
-const { version } = createRequire(import.meta.url)('../package.json') as { version: string }
+import { version } from './version.js'
 
 export function createServer(app: App): McpServer {
   const server = new McpServer({ name: 'colada-mcp', version }, { instructions: INSTRUCTIONS })
