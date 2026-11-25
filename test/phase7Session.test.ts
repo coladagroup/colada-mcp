@@ -135,7 +135,7 @@ describe('workspace errors (S11, AC-7.9)', () => {
     const answer = await h.call('api_get', { workspace: 'agency', service: 's-events', path: '/api/events' })
     expect(answer.isError).toBe(true)
     expect(answer.body.error).toMatch(/^The "workspace" parameter "agency" matches no workspace\. Close matches:\n/)
-    expect(listed(answer.body.error)).toBe(10)
+    expect(listed(String(answer.body.error))).toBe(10)
     expect(answer.body.error).toContain('… and 2 more.')
     expect(answer.body.error).toContain('Call list_workspaces for the full list.')
     expect(answer.body.error).not.toContain('Client ')

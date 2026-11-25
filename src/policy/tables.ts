@@ -62,6 +62,24 @@ export const DELETE_ALLOWLIST: readonly RouteRule[] = [
   }
 ]
 
+export const IF_MATCH_REQUIRED: readonly RouteRule[] = [
+  { id: 'M01', service: 's-events-guests', method: 'PATCH', pattern: /^\/api\/events\/[^/]+\/guests\/[^/]+$/ },
+  {
+    id: 'M02',
+    service: 's-events-guests',
+    method: 'PATCH',
+    pattern: /^\/api\/events\/[^/]+\/guests\/[^/]+\/attributes$/
+  },
+  { id: 'M03', service: 's-events-guests', method: 'PUT', pattern: /^\/api\/events\/[^/]+\/guestschema\/properties$/ },
+  { id: 'M04', service: 's-email-templates', method: 'PATCH', pattern: /^\/api\/emailtemplates\/[^/]+$/ },
+  {
+    id: 'M05',
+    service: 's-email-templates',
+    method: 'PATCH',
+    pattern: /^\/api\/events\/[^/]+\/emailtemplates\/[^/]+$/
+  }
+]
+
 export const SECRET_ROUTES: readonly RouteRule[] = [
   { id: 'S01', service: 's-workspaces', method: 'GET', pattern: /^\/api\/workspaces\/[^/]+\/smtp\/?$/ },
   { id: 'S02', service: 's-workspaces', method: 'PUT', pattern: /^\/api\/workspaces\/[^/]+\/smtp\/?$/ },

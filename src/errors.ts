@@ -160,6 +160,12 @@ export const messages = {
     `Your Colada login ends at ${endsAt} (in about ${minutes} min). After that the next call opens the browser login. Finish open writes first.`,
   previewRequired: (tool: string, host: string) =>
     `${tool} on ${host} (a prod host) needs a preview first. Call it with preview: true and the same input, check the writes with the user, then call it again with the previewId from that answer within 10 minutes. Nothing was read or written.`,
+  badUpdatePath: (path: string, reason: string) => `Path "${path}": ${reason}. Nothing was sent.`,
+  updateNoChange: () => 'set and remove are both empty. Pass at least one path to change.',
+  updateNotRecord: () =>
+    'The GET did not return a JSON object or array, so api_update cannot change it. Use api_write. Nothing was written.',
+  updateNoRevision: (method: string, path: string) =>
+    `${method} ${path} needs If-Match, but the GET returned no revision (no X-ETag or ETag). Nothing was written.`,
   batchItemRefused: (index: number, reason: string) => `Item ${index}: ${reason} Nothing was sent.`,
   batchBudget: (items: number, remaining: number, limit: number) =>
     `The batch has ${items} writes, but only ${remaining} of ${limit} writes per minute are left. Nothing was sent. Wait a minute or send fewer items.`,

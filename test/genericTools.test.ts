@@ -49,6 +49,7 @@ describe('tools/list (AC24, AC32)', () => {
       'api_get',
       'api_write',
       'api_write_batch',
+      'api_update',
       'rtdb_get',
       'firestore_get',
       'campaigns_budget',
@@ -70,6 +71,7 @@ describe('tools/list (AC24, AC32)', () => {
     expect(annotations.campaigns_kb_search).toEqual({ readOnlyHint: true })
     expect(annotations.api_write).toEqual({ readOnlyHint: false, destructiveHint: true, idempotentHint: false })
     expect(annotations.api_write_batch).toEqual({ readOnlyHint: false, destructiveHint: true, idempotentHint: false })
+    expect(annotations.api_update).toEqual({ readOnlyHint: false, destructiveHint: true, idempotentHint: false })
     for (const name of [
       'campaigns_add_timesheet_report',
       'campaigns_update_timesheet_report',

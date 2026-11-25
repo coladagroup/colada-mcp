@@ -4,6 +4,7 @@ import { checkRead, checkService, checkWrite } from '../src/policy/index.js'
 import {
   DELETE_ALLOWLIST,
   DELETE_DENYLIST,
+  IF_MATCH_REQUIRED,
   PERSONAL_DATA_ROUTE_ALLOWLIST,
   PERSONAL_DATA_SERVICES,
   SECRET_ROUTES
@@ -210,7 +211,13 @@ describe('test cases cover the CONTRACT §4 tables', () => {
   })
 
   it('every pattern is anchored and lower case', () => {
-    const all = [...DELETE_DENYLIST, ...DELETE_ALLOWLIST, ...SECRET_ROUTES, ...PERSONAL_DATA_ROUTE_ALLOWLIST]
+    const all = [
+      ...DELETE_DENYLIST,
+      ...DELETE_ALLOWLIST,
+      ...SECRET_ROUTES,
+      ...PERSONAL_DATA_ROUTE_ALLOWLIST,
+      ...IF_MATCH_REQUIRED
+    ]
     for (const rule of all) {
       expect(rule.pattern.source.startsWith('^') && rule.pattern.source.endsWith('$')).toBe(true)
       expect(rule.pattern.source).toBe(rule.pattern.source.toLowerCase())

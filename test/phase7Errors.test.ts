@@ -22,9 +22,10 @@ async function setup(status: number, body: string | null) {
 }
 
 async function errorText(h: Harness, tool: string): Promise<string> {
-  if (tool === 'api_get') return (await h.call('api_get', { workspace: WS_A, service: SERVICE, path: PATH })).body.error
+  if (tool === 'api_get')
+    return String((await h.call('api_get', { workspace: WS_A, service: SERVICE, path: PATH })).body.error)
   const write = { method: 'PUT', service: SERVICE, path: PATH, headers: { 'If-Match': '1' }, body: { title: 'T' } }
-  if (tool === 'api_write') return (await h.call('api_write', { workspace: WS_A, ...write })).body.error
+  if (tool === 'api_write') return String((await h.call('api_write', { workspace: WS_A, ...write })).body.error)
   const batch = await h.call('api_write_batch', { workspace: WS_A, items: [write] })
   return (batch.body.items as Array<{ error: string }>)[0]?.error ?? ''
 }

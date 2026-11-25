@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { App } from './app.js'
 import { CONVENTIONS, CONVENTIONS_URI, INSTRUCTIONS } from './conventions.js'
 import { registerApiGet } from './tools/apiGet.js'
+import { registerApiUpdate } from './tools/apiUpdate.js'
 import { registerApiWrite } from './tools/apiWrite.js'
 import { registerApiWriteBatch } from './tools/apiWriteBatch.js'
 import { registerBudgetTools } from './tools/budgetTools.js'
@@ -36,6 +37,7 @@ export function createServer(app: App): McpServer {
   registerApiGet(server, app)
   registerApiWrite(server, app)
   registerApiWriteBatch(server, app)
+  registerApiUpdate(server, app)
   registerRtdbGet(server, app)
   registerFirestoreGet(server, app)
   registerCampaignsBudget(server, app)

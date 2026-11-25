@@ -12,6 +12,7 @@ Tools:
 | `api_get` | Sends one GET to a backoffice service (`s-*`) in one workspace. Returns the status, the JSON body and the headers `Content-Range`, `ETag`, `X-ETag`, `Location`. |
 | `api_write` | Sends one POST, PUT or PATCH with a JSON body. **It changes data.** |
 | `api_write_batch` | Sends up to 25 `api_write` requests in one workspace with one approval; checks all items first and stops at the first failure. **It changes data.** |
+| `api_update` | Reads one record, changes the given dot paths (`set`, `remove`) and sends the full record back with `If-Match` from the read. Answers only the changed paths. **It changes data.** |
 | `rtdb_get` | Reads one node of the Campaigns Realtime Database in one workspace. Optional `where`, `fields`, `groupBy` and `sum` run in the MCP, for exact totals. Read only. |
 | `firestore_get` | Reads one document or one page of a collection of the Campaigns Firestore. Read only. |
 | `campaigns_budget` | Computes the budget of one Campaigns project or offer with the app's rules (reserve fees, options, VAT, exchange rates). Read only. |
