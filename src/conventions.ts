@@ -64,6 +64,7 @@ Events (s-events)
 
 Email templates (s-email-templates)
 - One template: GET or PATCH /api/events/{event_id}/emailtemplates/{template_id}. PATCH needs If-Match and displayName.
+- name is the fixed type key of a template (confirmation, cancellation, ...). A PATCH ignores a new name and still answers 204; change displayName instead.
 - PATCH clears sendingTriggers, sendingCondition and visibleIfForSender when they are missing from the body: then automatic mails stop. Always copy them from the record you read.
 - Missing from the body and kept: l10n, from, replyTo, to, cc, bcc, attachments, automaticallyCreateCID. A PATCH without displayName is refused (400).
 - l10n is replaced as a whole: send every language, not only the changed one. attachments, to, cc and bcc are also replaced as a whole when sent.
@@ -84,6 +85,7 @@ Staffing (s-staffing, needs COLADA_ALLOW_PERSONAL_DATA=true)
 - Main routes: GET /api/skills, /api/role-templates, /api/staffResources, /api/staffResources/{id}/assignments, /api/events/{e}/phases, /api/events/{e}/requirements, and .../phases/{p}/requirements/{r}/assignments and .../candidates. Pages are 10 items for skills and role templates and 50 for staff resources by default: send Range for more.
 - Strict mode: every route without a permission, also an unknown or misspelled one, answers 403 "Strict mode is enabled", not 404. Check the path before you report a missing permission.
 - A projection (:(...)) answers 403 here. Use select.
+- List the requirements of an event with GET /api/events/{e}/requirements; GET .../phases/{p}/requirements answers 403 (strict mode).
 - DELETE /api/events/{e}/phases/{p}/requirements/{id} removes one requirement (ids are UUIDs; 204). It answers 409 REQUIREMENT_IN_USE while any assignment points at it, also a cancelled or declined one; assignments are not removed. Ask the user first; it cannot be undone.
 
 Directory contacts (s-directory-contacts)
