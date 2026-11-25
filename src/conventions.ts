@@ -48,7 +48,7 @@ The api-doc of each service (get_api_doc) is the source for routes and bodies. T
 - Without If-Match most update routes answer 400. With an old revision they answer 409.
 - api_write with preview: true runs the policy checks and returns the request (method, host, service, path, query, header names, body) without sending it. It uses no write budget.
 - api_write_batch sends up to 25 api_write items in one workspace with one approval. Use it only after the same change worked on one record with api_write. One refused item stops the whole batch before anything is sent; a failed item stops the rest ("not run"). It returns no response bodies: read the records again with api_get.
-- Use api_update to change a few fields of a big record (templates, forms, events, contacts): it reads the record, applies set and remove at dot paths, and sends the full record with If-Match from the GET. Paths refer to the record as read; a number is an array index. revisionChecked: false means the GET returned no revision and the write was sent without If-Match. For guest, guest schema and email template updates it refuses to write without a revision.
+- Use api_update to change a few fields of a big record (templates, forms, events, contacts): it reads the record, applies set and remove at dot paths, and sends the full record with If-Match from the GET. Paths refer to the record as read; a number is an array index. revisionChecked: false means the GET returned no revision and the write was sent without If-Match. For guest and email template updates it refuses to write without a revision. It cannot set the guest schema (see Guest schema).
 - 409 can also be a business rule (a limit reached, a duplicate). Read the record again and retry once; on a second 409 stop and tell the user.
 - A failed call shows the status and up to 500 characters of the service's answer. Many answers are empty; then check the required fields in the api-doc and whether If-Match was sent.
 - Create (POST) usually answers 201 with the record. Updates answer 204, or 200/201 with the record. Check the api-doc of the route.
@@ -98,7 +98,7 @@ Registration forms (s-events-forms)
 - PUT .../structure on a published form sets its status to PENDING: the change is not published. Publish again with PUT .../published, after asking the user.
 
 Guest schema of an event (s-events-guests, allowed without personal data)
-- GET /api/events/{e}/guestschema lists the fields an event uses. PUT .../guestschema/properties sets them, PUT .../guestschema/synced pulls the workspace definitions. They need If-Match greater than 0.
+- GET /api/events/{e}/guestschema lists the fields an event uses. PUT .../guestschema/properties sets them: send the full list of property names (properties.*.name of the GET) with api_write, If-Match = ETag of the GET. PUT .../guestschema/synced pulls the workspace definitions. They need If-Match greater than 0.
 - PUT .../guestschema/properties can remove only custom x_ fields (for example guest_x_single). Leaving out a standard field (for example contact_country) answers 500 and changes nothing. The PUT answers X-ETag 0: read the schema again before the next write.
 
 Guests (s-events-guests, personal data)
@@ -155,8 +155,9 @@ Rules
 - A preview reserves nothing: the real call reads fresh data and takes its own keys and offer number.
 - owner, updatedBy and createdBy are always you; they cannot be set. Timesheet entries you add belong to you. To book time as another user, call logout and log in as that user. projectManager, a lead accountManager and task assignees take a uid or email of a Campaigns user of the workspace.
 - Ids you pass (project, entity, offer, lead, row, costCenter, kbItem, unit, parentRow, source, task, board, invoice) must exist in the workspace, or nothing is written.
+- Task tools need the task permission of the source, as the app's task boards: campaigns_app/projects/tasks:manage for a project, campaigns_app/offers/tasks:manage for an offer, campaigns_app/leads/tasks:manage for a lead, or campaigns_app/tasks:manage for all. Archived projects and offers are read-only.
 - Personal fields (timesheet description, offer person, participants and description, lead name, contact and summary, task description and assignees) need personal data on.
-- A change by someone else between read and write is kept: the tool reads again and applies your change on top, at most 3 times.
+- A change by someone else between read and write is kept: the tool reads again and applies your change on top, at most 3 times. campaigns_update_project and campaigns_update_task are the exception, as in the app: they write only the fields you change, but a board move writes the whole task as read, so read the task again right before a move.
 - "written" in the output lists every write. When a later write fails after an earlier one was saved, the error says what is saved and what is not. Do not repeat the whole call; read the data and fix only the missing part.
 
 ## Errors from this MCP

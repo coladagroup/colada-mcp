@@ -49,7 +49,8 @@ async function setup(options: { allowPersonalData?: boolean; permissions?: strin
   result.fw.permissions = options.permissions ?? [
     'campaigns_app:view',
     'campaigns_app/projects/settings:manage',
-    'campaigns_app/offers/tasks:manage'
+    'campaigns_app/offers/tasks:manage',
+    'campaigns_app/projects/tasks:manage'
   ]
   result.fw.world.users.set(WS, [fakeUser(ME, 'frank@colada.test'), fakeUser('u-am', 'am@b.ch')])
   result.fw.rtdb[WS] = {
@@ -268,6 +269,18 @@ describe('campaigns_create_task (S7, AC-7.5)', () => {
     await refusedWithoutWrites(h, world, CREATE_TASK, args, text)
   })
 
+  it.each([CREATE_TASK, UPDATE_TASK])('%s refuses the task board of an archived project or offer', async (tool) => {
+    const { h, fw, world } = await setup()
+    ;(fw.rtdb[WS]?.planner as Record<string, Record<string, unknown>>).o1 = {
+      uid: 'o1',
+      name: 'Gala',
+      owner: 'boss',
+      archived: true
+    }
+    const args = tool === CREATE_TASK ? { source: 'o1', name: 'X' } : { source: 'o1', task: 't1', name: 'X' }
+    await refusedWithoutWrites(h, world, tool, args, 'is archived')
+  })
+
   it('refuses a task board of a project hidden from the caller', async () => {
     const { h, fw, world } = await setup()
     ;(fw.rtdb[WS]?.taskBoards as Record<string, unknown>).p3 = { prefix: 'S', taskCounter: 0, boards: boards() }
@@ -290,6 +303,30 @@ describe('campaigns_create_task (S7, AC-7.5)', () => {
   it('needs one of the task manage permissions', async () => {
     const { h, world } = await setup({ permissions: ['campaigns_app:view'] })
     await refusedWithoutWrites(h, world, CREATE_TASK, { source: 'o1', name: 'X' }, 'campaigns_app/tasks:manage or')
+  })
+
+  const LEAD_BOARD = { uid: 'd1', prefix: 'L', taskCounter: 0, boards: boards() }
+  it.each<[string, string, string | null]>([
+    ['campaigns_app/offers/tasks:manage', 'p1', 'campaigns_app/projects/tasks:manage or campaigns_app/tasks:manage'],
+    ['campaigns_app/leads/tasks:manage', 'o1', 'campaigns_app/offers/tasks:manage or campaigns_app/tasks:manage'],
+    ['campaigns_app/projects/tasks:manage', 'd1', 'campaigns_app/leads/tasks:manage or campaigns_app/tasks:manage'],
+    ['campaigns_app/projects/tasks:manage', 'p1', null],
+    ['campaigns_app/offers/tasks:manage', 'o1', null],
+    ['campaigns_app/leads/tasks:manage', 'd1', null],
+    ['campaigns_app/tasks:manage', 'p1', null]
+  ])('with only %s, a task on %s needs the permission of the source type', async (permission, source, missing) => {
+    const { h, fw, world } = await setup({ permissions: ['campaigns_app:view', permission] })
+    ;(fw.rtdb[WS]?.taskBoards as Record<string, unknown>).d1 = LEAD_BOARD
+    if (missing !== null) {
+      await refusedWithoutWrites(h, world, CREATE_TASK, { source, name: 'X' }, missing)
+      return
+    }
+    expect((await call(h, CREATE_TASK, { source, name: 'X' })).isError).toBe(false)
+  })
+
+  it('campaigns_update_task also needs the permission of the source type', async () => {
+    const { h, world } = await setup({ permissions: ['campaigns_app:view', 'campaigns_app/leads/tasks:manage'] })
+    await refusedWithoutWrites(h, world, UPDATE_TASK, { source: 'o1', task: 't1', name: 'X' }, 'offers/tasks:manage')
   })
 
   it('counter race: a counter changed by someone else is read again and the task gets the next number', async () => {

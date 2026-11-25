@@ -156,11 +156,13 @@ export const messages = {
     `${field}: no Campaigns user of workspace ${workspace} has this uid or email. Nothing was written.`,
   usersListForbidden: (field: string) =>
     `${field} can only be your own uid: your role lacks api:users:list, so the MCP cannot check other users. Nothing was written.`,
-  sessionEndsSoon: (endsAt: string, minutes: number) =>
-    `Your Colada login ends at ${endsAt} (in about ${minutes} min). After that the next call opens the browser login. Finish open writes first.`,
+  sessionEndsSoon: (endsAt: string, minutes: number, noBrowser: boolean) =>
+    `Your Colada login ends at ${endsAt} (in about ${minutes} min). ${noBrowser ? 'After that every call answers login_required, because this server runs without a browser.' : 'After that the next call opens the browser login.'} Finish open writes first.`,
   previewRequired: (tool: string, host: string) =>
     `${tool} on ${host} (a prod host) needs a preview first. Call it with preview: true and the same input, check the writes with the user, then call it again with the previewId from that answer within 10 minutes. Nothing was read or written.`,
   badUpdatePath: (path: string, reason: string) => `Path "${path}": ${reason}. Nothing was sent.`,
+  updateGuestSchema: () =>
+    'api_update cannot set the guest schema: GET .../guestschema returns property objects, but PUT .../guestschema/properties takes a list of property names. Read the schema, then use api_write with the full list of names and If-Match set to the ETag of the GET. Nothing was sent.',
   updateNoChange: () => 'set and remove are both empty. Pass at least one path to change.',
   updateNotRecord: () =>
     'The GET did not return a JSON object or array, so api_update cannot change it. Use api_write. Nothing was written.',
@@ -192,6 +194,8 @@ export const messages = {
     `replaceBlankRow: the budget of offer ${offer} has no blank row (empty name, no price, no sub-rows, no timesheet copies). Nothing was written.`,
   writeLeadArchived: (id: string) => `Lead ${id} is archived and cannot be changed.`,
   writeProjectArchived: (id: string) => `Project ${id} is archived and cannot be changed.`,
+  writeSourceArchived: (source: string) =>
+    `${source} is archived, so its task boards are read-only, as in the app. Nothing was written.`,
   writeNoTaskBoards: (source: string, workspace: string) =>
     `"${source}" has no task boards in workspace ${workspace} (taskBoards/${source}). Nothing was written.`,
   writeUnknownBoard: (board: string, source: string, known: string[]) =>

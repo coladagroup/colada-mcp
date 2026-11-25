@@ -44,6 +44,7 @@ export function registerApiUpdate(server: McpServer, app: App) {
         const [getLine, writeLine] = ctx.lines as [BatchLine, BatchLine]
         const set = params.set ?? {}
         const remove = params.remove ?? []
+        if (params.method === 'PUT' && GUEST_SCHEMA_PROPERTIES.test(params.path)) throw fail.updateGuestSchema()
         if (Object.keys(set).length === 0 && remove.length === 0) throw fail.updateNoChange()
         checkEditPaths(set, remove)
         const getChecked = checkRead({ service: params.service, path: getPath }, app.deps.allowPersonalData)
@@ -110,7 +111,9 @@ export function registerApiUpdate(server: McpServer, app: App) {
   )
 }
 
+const GUEST_SCHEMA_PROPERTIES = /^\/api\/events\/[^/]+\/guestschema\/properties\/?$/
+
 function revisionOf(headers: Record<string, string>): string | null {
-  const value = headers['X-ETag'] ?? headers.ETag
-  return value === undefined || value === '' || value === '0' ? null : value
+  const usable = (value: string | undefined) => (value === undefined || value === '' || value === '0' ? null : value)
+  return usable(headers['X-ETag']) ?? usable(headers.ETag)
 }

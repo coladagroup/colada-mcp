@@ -82,7 +82,7 @@ export class App {
     if (endsAt === null) return null
     const left = endsAt - this.deps.now()
     if (left <= 0 || left > SESSION_NOTICE_SECONDS) return null
-    return messages.sessionEndsSoon(isoTime(endsAt), Math.ceil(left / 60))
+    return messages.sessionEndsSoon(isoTime(endsAt), Math.ceil(left / 60), this.deps.noBrowser === true)
   }
 
   userOf(realm: string | null): string | null {

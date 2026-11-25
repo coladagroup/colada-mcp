@@ -64,7 +64,8 @@ describe('short session note (S1, AC-7.1)', () => {
 describe('COLADA_NO_BROWSER (S2, AC-7.2)', () => {
   it('parses only "1"', () => {
     expect(parseNoBrowser({ COLADA_NO_BROWSER: '1' })).toBe(true)
-    expect(parseNoBrowser({ COLADA_NO_BROWSER: 'true' })).toBe(false)
+    expect(parseNoBrowser({ COLADA_NO_BROWSER: 'true' })).toBe(true)
+    expect(parseNoBrowser({ COLADA_NO_BROWSER: '0' })).toBe(false)
     expect(parseNoBrowser({})).toBe(false)
   })
 
@@ -91,6 +92,16 @@ describe('COLADA_NO_BROWSER (S2, AC-7.2)', () => {
     expect(answer.isError).toBe(true)
     expect(answer.text).toContain('this server runs without a browser')
     expect(h.opened).toEqual([])
+  })
+
+  it('the end-of-session notice does not promise a browser login', async () => {
+    const h = await setup({ noBrowser: true, ssoEndsIn: 3600 })
+    await h.call('list_workspaces')
+    const endsAt = h.world.now + 3600
+    h.world.now = endsAt - 29 * 60
+    expect((await h.call('list_workspaces')).body.notice).toBe(
+      `Your Colada login ends at ${iso(endsAt)} (in about 29 min). After that every call answers login_required, because this server runs without a browser. Finish open writes first.`
+    )
   })
 
   it('a valid stored refresh token still works', async () => {

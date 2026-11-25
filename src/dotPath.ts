@@ -156,7 +156,15 @@ function setAt(
       record[segment] = value
       return found ? { found: true, value: old } : { found: false }
     }
-    if (!Object.hasOwn(record, segment) || record[segment] === undefined) record[segment] = {}
+    if (!Object.hasOwn(record, segment) || record[segment] === undefined) {
+      if (INDEX.test(segments[index + 1] ?? '')) {
+        throw fail.badUpdatePath(
+          path,
+          `"${segments.slice(0, index + 1).join('.')}" does not exist, and set never adds array items`
+        )
+      }
+      record[segment] = {}
+    }
     current = record[segment]
   }
   return { found: false }

@@ -2,7 +2,13 @@ import type { App } from '../../../app.js'
 import { fail } from '../../../errors.js'
 import type { FirebaseWriteToolContext } from '../../../tools/run.js'
 import { isHiddenProject } from '../../policy/rows.js'
-import { checkPersonalInput, PERSONAL_INPUT_FIELDS, type PlannedWrite, type WriteTool } from '../../policy/writes.js'
+import {
+  checkPersonalInput,
+  checkTaskSourcePermission,
+  PERSONAL_INPUT_FIELDS,
+  type PlannedWrite,
+  type WriteTool
+} from '../../policy/writes.js'
 import { assertId, defined, nowJson, open, partial, type Session, type Target, written } from './common.js'
 import { conditionalWrite } from './conditional.js'
 import { rankAtEnd } from './taskRanks.js'
@@ -104,11 +110,16 @@ function shown(app: App, tool: WriteTool, task: Fields): Fields {
   return Object.fromEntries(Object.entries(task).filter(([key]) => !personal.includes(key)))
 }
 
-async function checkSource(session: Session, source: string) {
-  for (const node of ['projects', 'planner']) {
+async function checkSource(session: Session, tool: WriteTool, source: string) {
+  let kind: 'projects' | 'planner' | 'lead' = 'lead'
+  for (const node of ['projects', 'planner'] as const) {
     const record = (await session.writer.read(`${node}/${source}`)).value
     if (isHiddenProject(record, session.uid, session.role)) throw fail.writeHidden('Task board source', source)
+    if (isRecord(record) && record.archived) throw fail.writeSourceArchived(source)
+    if (isRecord(record) && kind === 'lead') kind = node
   }
+  const { permissions } = await session.writer.access()
+  checkTaskSourcePermission(tool, kind, permissions, session.writer.workspace)
 }
 
 async function resolveAssignees(
@@ -153,7 +164,7 @@ export async function createTask(app: App, ctx: FirebaseWriteToolContext, input:
   if (!isRecord(taskBoards) || (!isRecord(taskBoards.boards) && !Array.isArray(taskBoards.boards))) {
     throw fail.writeNoTaskBoards(source, workspace)
   }
-  await checkSource(session, source)
+  await checkSource(session, CREATE_TASK, source)
   const board = boardById(boardsOf(taskBoards.boards), boardId, source)
   if (invoice !== undefined && !isRecord((await session.writer.read(`invoices/${source}/${invoice}`)).value)) {
     throw fail.writeMissingReference('Invoice', invoice, workspace)
@@ -241,7 +252,7 @@ export async function updateTask(app: App, ctx: FirebaseWriteToolContext, input:
 
   const stored = (await session.writer.read(`taskBoards/${source}/boards`)).value
   if (stored === null || typeof stored !== 'object') throw fail.writeNoTaskBoards(source, workspace)
-  await checkSource(session, source)
+  await checkSource(session, UPDATE_TASK, source)
   const boards = boardsOf(stored)
   const location = findTask(boards, uid)
   if (location === null) throw fail.writeUnknownTask(uid, source)

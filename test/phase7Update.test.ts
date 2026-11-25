@@ -93,6 +93,18 @@ describe('api_update (S4, AC-7.3)', () => {
     expect(writesTo(h, EVENT_GW)[0]?.headers['if-match']).toBe('12')
   })
 
+  it('takes ETag when X-ETag is 0', async () => {
+    const h = await setup({ [EVENT_GW]: { getBody: event(), getHeaders: { 'X-ETag': '0', ETag: '5' } } })
+    await h.call('api_update', {
+      workspace: WS_A,
+      method: 'PUT',
+      service: 's-events',
+      path: EVENT,
+      set: { title: 'T' }
+    })
+    expect(writesTo(h, EVENT_GW)[0]?.headers['if-match']).toBe('5')
+  })
+
   it.each([409, 412])('a %i is a conflict with one write and no retry', async (status) => {
     const h = await setup({ [EVENT_GW]: { getBody: event(), getHeaders: { 'X-ETag': '7' }, writeStatus: status } })
     const answer = await h.call('api_update', {
@@ -136,21 +148,21 @@ describe('api_update (S4, AC-7.3)', () => {
   it('getPath reads from another path than the write', async () => {
     const h = await setup(
       {
-        [`/_gw/s-events-guests${SCHEMA}`]: { getBody: { properties: ['a', 'b'] }, getHeaders: { ETag: '3' } },
-        [`/_gw/s-events-guests${SCHEMA_PROPERTIES}`]: { getBody: null }
+        [`/_gw/s-events${EVENT}`]: { getBody: { properties: ['a', 'b'] }, getHeaders: { ETag: '3' } },
+        [`/_gw/s-events${EVENT}/settings`]: { getBody: null }
       },
       true
     )
     const answer = await h.call('api_update', {
       workspace: WS_A,
       method: 'PUT',
-      service: 's-events-guests',
-      path: SCHEMA_PROPERTIES,
-      getPath: SCHEMA,
+      service: 's-events',
+      path: `${EVENT}/settings`,
+      getPath: EVENT,
       set: { 'properties.1': 'c' }
     })
     expect(answer.isError).toBe(false)
-    const [write] = writesTo(h, `/_gw/s-events-guests${SCHEMA_PROPERTIES}`)
+    const [write] = writesTo(h, `/_gw/s-events${EVENT}/settings`)
     expect(write?.headers['if-match']).toBe('3')
     expect(JSON.parse(write?.body ?? 'null')).toEqual({ properties: ['a', 'c'] })
   })
@@ -187,8 +199,9 @@ describe('api_update If-Match routes (S4, B3.3)', () => {
   it.each([
     ['s-email-templates', TEMPLATE, 'PATCH', false],
     ['s-email-templates', '/api/events/e1/emailtemplates/t1', 'PATCH', false],
-    ['s-events-guests', SCHEMA_PROPERTIES, 'PUT', true],
-    ['s-events-guests', '/api/events/e1/guests/g1', 'PATCH', true]
+    ['s-events-guests', '/api/events/e1/guests/g1', 'PATCH', true],
+    ['s-events-guests', '/api/events/e1/guests/g1/', 'PATCH', true],
+    ['s-email-templates', `${TEMPLATE}/`, 'PATCH', false]
   ])('%s %s without a revision is refused and nothing is written', async (service, path, method, personal) => {
     const gw = `/_gw/${service}${path}`
     const h = await setup({ [gw]: { getBody: { name: 'x' }, getHeaders: { ETag: '0' } } }, personal)
@@ -212,6 +225,23 @@ describe('api_update If-Match routes (S4, B3.3)', () => {
     const [write] = writesTo(h, gw)
     expect(write?.headers['if-match']).toBe('4')
     expect(JSON.parse(write?.body ?? 'null')).toEqual({ name: 'y', sendingTriggers: ['a'] })
+  })
+})
+
+describe('api_update and the guest schema', () => {
+  it.each([SCHEMA_PROPERTIES, `${SCHEMA_PROPERTIES}/`])('refuses PUT %s before any request', async (path) => {
+    const h = await setup({}, true)
+    const answer = await h.call('api_update', {
+      workspace: WS_A,
+      method: 'PUT',
+      service: 's-events-guests',
+      path,
+      getPath: SCHEMA,
+      remove: ['properties.1']
+    })
+    expect(answer.isError).toBe(true)
+    expect(answer.body.error).toContain('use api_write')
+    expect(h.world.backendRequests().filter((r) => r.url.pathname.startsWith('/_gw/s-events-guests'))).toEqual([])
   })
 })
 
@@ -265,7 +295,9 @@ describe('dot paths on arrays (S4)', () => {
     [{ 'properties.2': 'x' }, ['properties.0'], 'would move'],
     [{}, ['properties.9'], 'does not exist'],
     [{}, ['missing'], 'does not exist'],
-    [{ properties: [] }, ['properties.0'], 'overlaps']
+    [{ properties: [] }, ['properties.0'], 'overlaps'],
+    [{ 'tags.0': 'x' }, [], 'never adds array items'],
+    [{ 'meta.list.0.name': 'x' }, [], 'never adds array items']
   ])('refuses set %j remove %j', (set, remove, text) => {
     expect(() => applyEdits(schema, set, remove)).toThrow(text)
   })

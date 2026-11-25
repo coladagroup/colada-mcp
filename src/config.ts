@@ -22,7 +22,7 @@ export function parseHosts(env: Record<string, string | undefined>): string[] {
 }
 
 export function parseNoBrowser(env: Record<string, string | undefined>): boolean {
-  return env.COLADA_NO_BROWSER === '1'
+  return env.COLADA_NO_BROWSER === '1' || env.COLADA_NO_BROWSER === 'true'
 }
 
 export function parseAllowPersonalData(env: Record<string, string | undefined>): boolean {

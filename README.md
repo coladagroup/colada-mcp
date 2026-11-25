@@ -158,7 +158,7 @@ Twelve `campaigns_*` tools change Campaigns data in the Realtime Database: times
 - `owner`, `updatedBy` and `createdBy` are always you. There is no undo. No tool deletes a Firebase node: `campaigns_remove_budget_rows` removes rows inside one budget only, and `campaigns_update_task` moves a task to another board in one write.
 - Ids you pass (project, row, offer, lead, cost center, knowledge base item, unit) must exist in the workspace, or nothing is written.
 - Personal fields (for example a timesheet description or a lead name) are accepted only with `COLADA_ALLOW_PERSONAL_DATA=true`.
-- A change by someone else between read and write is kept: the tool reads again and applies your change on top, at most 3 times.
+- A change by someone else between read and write is kept: the tool reads again and applies your change on top, at most 3 times. campaigns_update_project and campaigns_update_task are the exception, as in the app: they write only the fields you change, but a board move writes the whole task as read, so read the task again right before a move.
 - The tools write only to an allowlist of paths below your workspace. In `projects/` only `campaigns_update_project` writes, and only `status`, `type` and `updatedAt`.
 - The task tools write the task only: no notification, email or files. Assignees are not told by the app.
 - Every write gets its own line in the call log, without the body.

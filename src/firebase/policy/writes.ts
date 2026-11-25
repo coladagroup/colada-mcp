@@ -273,6 +273,24 @@ export function checkWritePermission(tool: WriteTool, permissions: ReadonlySet<s
   }
 }
 
+const TASK_SOURCE_PERMISSIONS = {
+  projects: 'campaigns_app/projects/tasks:manage',
+  planner: 'campaigns_app/offers/tasks:manage',
+  lead: 'campaigns_app/leads/tasks:manage'
+} as const
+
+export function checkTaskSourcePermission(
+  tool: WriteTool,
+  kind: keyof typeof TASK_SOURCE_PERMISSIONS,
+  permissions: ReadonlySet<string>,
+  workspace: string
+): void {
+  const anyOf = [TASK_SOURCE_PERMISSIONS[kind], 'campaigns_app/tasks:manage']
+  if (!anyOf.some((permission) => permissions.has(permission))) {
+    throw fail.writeMissingPermission(anyOf.join(' or '), workspace, tool)
+  }
+}
+
 export function checkPersonalInput(tool: WriteTool, input: object, allowPersonalData: boolean) {
   if (allowPersonalData) return
   const field = PERSONAL_INPUT_FIELDS[tool].find((name) => (input as Record<string, unknown>)[name] !== undefined)

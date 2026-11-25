@@ -186,17 +186,14 @@ function isRecords(value: unknown): value is Record<string, unknown> {
   )
 }
 
-const STORAGE_URL = /https:\/\/firebasestorage\.googleapis\.com\/[^\s"'<>)]*/g
+const STORAGE_URL = /https:\/\/firebasestorage\.googleapis\.com\/[^\s"'<>]*/g
+const TOKEN_PARAM = /(\?|&amp;|&)token=[^&\s"'<>)#]*/g
 
 function withoutStorageToken(url: string): string {
-  try {
-    const parsed = new URL(url)
-    if (!parsed.searchParams.has('token')) return url
-    parsed.searchParams.delete('token')
-    return parsed.toString()
-  } catch {
-    return url
-  }
+  return url
+    .replace(TOKEN_PARAM, (_match, separator: string) => (separator === '?' ? '?' : ''))
+    .replace(/\?(&amp;|&)/, '?')
+    .replace(/\?(?=$|[)#])/, '')
 }
 
 export function stripStorageTokens(value: unknown): unknown {

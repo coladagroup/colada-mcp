@@ -100,6 +100,17 @@ describe('Firebase Storage links (S14, AC-7.11)', () => {
     })
   })
 
+  it('removes token from links inside HTML, where & is written as &amp;', () => {
+    const html = `<img src="${LINK}?alt=media&amp;token=abc-123"><a href='${LINK}?token=t2&amp;alt=media'>x</a>`
+    expect(stripStorageTokens(html)).toBe(`<img src="${LINK}?alt=media"><a href='${LINK}?alt=media'>x</a>`)
+  })
+
+  it('removes token from a file name with parentheses and keeps a closing bracket of the text', () => {
+    const file = 'https://firebasestorage.googleapis.com/v0/b/app.appspot.com/o/Offer%20(1).pdf'
+    expect(stripStorageTokens(`(${file}?alt=media&token=secret)`)).toBe(`(${file}?alt=media)`)
+    expect(stripStorageTokens(`${file}?token=secret`)).toBe(file)
+  })
+
   it('rtdb_get returns no Storage link with a token', async () => {
     const { h, fw } = await firebaseSetup({})
     harnesses.push(h)
