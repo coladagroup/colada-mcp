@@ -28,6 +28,7 @@ The api-doc of each service (get_api_doc) is the source for routes and bodies. T
 - /api/events:(title,start,end) returns only these fields plus id, revision, audit fields and required fields.
 - Field names are letters, digits and _ only. No nested paths. Unknown fields are ignored.
 - Only on list routes that declare it (see the api-doc). A single record (GET /api/events/{id}) is always complete.
+- A projection on the guest schema, the email template list or event resources answers 404, and on s-staffing 403. Use select there.
 
 ## Filter q
 
@@ -79,19 +80,26 @@ Event resources (s-events-resources)
 - PUT works only with the id: there is no PUT route for rn_<name> (404). PUT .../resources/{id} needs no If-Match and answers X-ETag 0. Send the whole record you read: type, displayNameL10n, the is* flags, cancellationFees and options are required. For allocation context PARTICIPANT_GROUPS it resets isRequestEnabled, requestStart and requestEnd.
 - DELETE /api/events/{e}/resources/{id} removes one resource (ids are UUIDs). The service ignores {e}, so read the resource first and check it belongs to that event. It answers 400 while the request window is active or the resource is used or has slots. Ask the user first; it cannot be undone.
 
-Staffing requirements (s-staffing, needs COLADA_ALLOW_PERSONAL_DATA=true)
+Staffing (s-staffing, needs COLADA_ALLOW_PERSONAL_DATA=true)
+- Main routes: GET /api/skills, /api/role-templates, /api/staffResources, /api/staffResources/{id}/assignments, /api/events/{e}/phases, /api/events/{e}/requirements, and .../phases/{p}/requirements/{r}/assignments and .../candidates. Pages are 10 items for skills and role templates and 50 for staff resources by default: send Range for more.
+- Strict mode: every route without a permission, also an unknown or misspelled one, answers 403 "Strict mode is enabled", not 404. Check the path before you report a missing permission.
+- A projection (:(...)) answers 403 here. Use select.
 - DELETE /api/events/{e}/phases/{p}/requirements/{id} removes one requirement (ids are UUIDs; 204). It answers 409 REQUIREMENT_IN_USE while any assignment points at it, also a cancelled or declined one; assignments are not removed. Ask the user first; it cannot be undone.
 
 Directory contacts (s-directory-contacts)
 - GET /api/contacts needs Range ("Range: contacts 0-100"). Without it the service answers 400 with an empty body.
+- The search parameter is ignored on /api/contacts and /api/accounts (s-directory-accounts): all records come back. Filter with q, for example q=lastName=Muster.
+- POST /api/contacts needs firstName, lastName and email; POST /api/accounts needs name. The body must be a JSON object. A missing field or a non-object body answers 400 with an empty body.
 
 Registration forms (s-events-forms)
 - Base: /api/events/{event_id}/formtemplates/registration. PUT .../structure, PUT .../settings and PUT .../published need If-Match.
 - structure holds pages; the elements of a page are a map per language. A new field must go into the list of every language of the page. Send the whole structure back.
 - PUT .../published makes the form public to guests at once; DELETE .../published unpublishes it. Ask the user first for both.
+- PUT .../structure on a published form sets its status to PENDING: the change is not published. Publish again with PUT .../published, after asking the user.
 
 Guest schema of an event (s-events-guests, allowed without personal data)
 - GET /api/events/{e}/guestschema lists the fields an event uses. PUT .../guestschema/properties sets them, PUT .../guestschema/synced pulls the workspace definitions. They need If-Match greater than 0.
+- PUT .../guestschema/properties can remove only custom x_ fields (for example guest_x_single). Leaving out a standard field (for example contact_country) answers 500 and changes nothing. The PUT answers X-ETag 0: read the schema again before the next write.
 
 Guests (s-events-guests, personal data)
 - A projection on the guest list (/api/events/{e}/guests:(status)) is ignored: full guest records come back. Use select (for example ["id", "status"]) to keep only what you need.
@@ -107,7 +115,7 @@ Realtime Database nodes (rtdb_get)
 - planner/<id>: offers. budgets/<projectId> and plannerBudgets/<offerId>: the budget tree of a project or offer (rows with content and subRows).
 - timesheet/<id>: booked time (owner, date YYYY-MM-DD, hours, minutes, project, entity, tag, account). Index: owner, project. There is no index on date: filter dates with where.
 - tags, units, costCenters, currencies, pdfTemplates, checklists, knowledgeBase, projectCounter: reference data.
-- costCenters is stored as {list, updatedAt}: read the tree with rtdb_get path costCenters/list. knowledgeBase is a plain list.
+- costCenters is stored as {list, updatedAt}: read the tree with rtdb_get path costCenters/list. knowledgeBase is a plain list (one record, a tree): use select, for example ["*.name", "*.children.*.name"], not fields.
 - deals (leads), invoices/<projectId>, taskBoards/<source>, tasks (index: source), emailTemplates, companyDetails.
 - Personal data, off by default: activities, comments, chat, richChat, history, externalAssignees, accounts.
 
