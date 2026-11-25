@@ -7,6 +7,7 @@ import {
   checkTaskSourcePermission,
   PERSONAL_INPUT_FIELDS,
   type PlannedWrite,
+  type TaskSourceKind,
   type WriteTool
 } from '../../policy/writes.js'
 import { assertId, defined, nowJson, open, partial, type Session, type Target, written } from './common.js'
@@ -110,16 +111,27 @@ function shown(app: App, tool: WriteTool, task: Fields): Fields {
   return Object.fromEntries(Object.entries(task).filter(([key]) => !personal.includes(key)))
 }
 
+const SOURCE_NODES: ReadonlyArray<[string, TaskSourceKind]> = [
+  ['projects', 'projects'],
+  ['planner', 'planner'],
+  ['deals', 'lead']
+]
+
 async function checkSource(session: Session, tool: WriteTool, source: string) {
-  let kind: 'projects' | 'planner' | 'lead' = 'lead'
-  for (const node of ['projects', 'planner'] as const) {
+  const records: Array<{ kind: TaskSourceKind; record: Fields }> = []
+  for (const [node, kind] of SOURCE_NODES) {
     const record = (await session.writer.read(`${node}/${source}`)).value
-    if (isHiddenProject(record, session.uid, session.role)) throw fail.writeHidden('Task board source', source)
-    if (isRecord(record) && record.archived) throw fail.writeSourceArchived(source)
-    if (isRecord(record) && kind === 'lead') kind = node
+    if (isRecord(record)) records.push({ kind, record })
   }
+  const active = records.filter(({ record }) => !record.archived)
+  if (records.length > 0 && active.length === 0) throw fail.writeSourceArchived(source)
+  const visible = active.filter(
+    ({ kind, record }) => kind === 'lead' || !isHiddenProject(record, session.uid, session.role)
+  )
+  if (records.length > 0 && visible.length === 0) throw fail.writeHidden('Task board source', source)
+  const kinds = records.length === 0 ? (['lead'] as const) : visible.map(({ kind }) => kind)
   const { permissions } = await session.writer.access()
-  checkTaskSourcePermission(tool, kind, permissions, session.writer.workspace)
+  checkTaskSourcePermission(tool, kinds, permissions, session.writer.workspace)
 }
 
 async function resolveAssignees(
@@ -259,6 +271,7 @@ export async function updateTask(app: App, ctx: FirebaseWriteToolContext, input:
   if (location.task.archived || location.board.id === ARCHIVED) throw fail.writeTaskArchived(uid)
   const toBoard =
     input.board !== undefined && input.board !== location.board.id ? boardById(boards, input.board, source) : null
+  if (toBoard === null && Object.keys(fields).length === 0) throw fail.writeNoFields('task')
   const assignees = await resolveAssignees(app, ctx, session, fields.assignees)
 
   const now = nowJson(app)

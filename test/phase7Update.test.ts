@@ -145,6 +145,22 @@ describe('api_update (S4, AC-7.3)', () => {
     ])
   })
 
+  it('shortens very long values in the answer, not in the write', async () => {
+    const long = 'x'.repeat(600_000)
+    const h = await setup({ [EVENT_GW]: { getBody: { ...event(), description: long }, getHeaders: { 'X-ETag': '7' } } })
+    const answer = await h.call('api_update', {
+      workspace: WS_A,
+      method: 'PUT',
+      service: 's-events',
+      path: EVENT,
+      set: { description: 'short' }
+    })
+    expect(answer.isError).toBe(false)
+    expect(answer.body.changed).toEqual([{ path: 'description', old: { notShown: '600002 characters' }, new: 'short' }])
+    expect(Buffer.byteLength(answer.text)).toBeLessThan(10_000)
+    expect(JSON.parse(writesTo(h, EVENT_GW)[0]?.body ?? 'null').description).toBe('short')
+  })
+
   it('getPath reads from another path than the write', async () => {
     const h = await setup(
       {
@@ -300,6 +316,11 @@ describe('dot paths on arrays (S4)', () => {
     [{ 'meta.list.0.name': 'x' }, [], 'never adds array items']
   ])('refuses set %j remove %j', (set, remove, text) => {
     expect(() => applyEdits(schema, set, remove)).toThrow(text)
+  })
+
+  it('allows set on indexes below the lowest removed index', () => {
+    const { record } = applyEdits(schema, { 'properties.0': 'first' }, ['properties.2'])
+    expect(record).toEqual({ properties: ['first', 'lastName', 'company'] })
   })
 
   it('creates missing object parents for set', () => {

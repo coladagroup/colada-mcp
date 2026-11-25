@@ -281,6 +281,25 @@ describe('campaigns_create_task (S7, AC-7.5)', () => {
     await refusedWithoutWrites(h, world, tool, args, 'is archived')
   })
 
+  it('a project made from an archived offer keeps its task board writable', async () => {
+    const { h, fw } = await setup({ permissions: ['campaigns_app:view', 'campaigns_app/projects/tasks:manage'] })
+    ;(fw.rtdb[WS]?.planner as Record<string, unknown>).p1 = { uid: 'p1', name: 'Fair offer', archived: true }
+    expect((await call(h, CREATE_TASK, { source: 'p1', name: 'X' })).isError).toBe(false)
+  })
+
+  it('a lead turned into an offer accepts the lead permission', async () => {
+    const { h, fw } = await setup({ permissions: ['campaigns_app:view', 'campaigns_app/leads/tasks:manage'] })
+    ;(fw.rtdb[WS] as Record<string, unknown>).deals = { o1: { uid: 'o1', name: 'Gala lead' } }
+    expect((await call(h, UPDATE_TASK, { source: 'o1', task: 't1', name: 'X' })).isError).toBe(false)
+  })
+
+  it('refuses when every record of the key is archived', async () => {
+    const { h, fw, world } = await setup()
+    ;(fw.rtdb[WS] as Record<string, unknown>).deals = { o1: { uid: 'o1', archived: true } }
+    ;(fw.rtdb[WS]?.planner as Record<string, Record<string, unknown>>).o1 = { uid: 'o1', archived: true }
+    await refusedWithoutWrites(h, world, CREATE_TASK, { source: 'o1', name: 'X' }, 'is archived')
+  })
+
   it('refuses a task board of a project hidden from the caller', async () => {
     const { h, fw, world } = await setup()
     ;(fw.rtdb[WS]?.taskBoards as Record<string, unknown>).p3 = { prefix: 'S', taskCounter: 0, boards: boards() }
@@ -424,6 +443,7 @@ describe('campaigns_update_task (S7, AC-7.5)', () => {
 
   it.each([
     [{ source: 'o1', task: 't1' }, 'Pass at least one field'],
+    [{ source: 'o1', task: 't1', board: 'backlog' }, 'Pass at least one field'],
     [{ source: 'o1', task: 'nope', name: 'X' }, 'Task "nope" is not on the task boards of o1'],
     [{ source: 'o1', task: 't2', name: 'X' }, 'is archived'],
     [{ source: 'o1', task: 't1', board: 'archived' }, 'do not archive tasks'],

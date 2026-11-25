@@ -2,9 +2,9 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { MAX_WRITES_PER_MINUTE } from '../api/client.js'
 import type { App } from '../app.js'
-import { applyEdits, checkEditPaths } from '../dotPath.js'
+import { applyEdits, type Change, checkEditPaths } from '../dotPath.js'
 import { fail, ToolError } from '../errors.js'
-import { checkRead, checkWrite, MAX_GET_DOWNLOAD_BYTES, requiresIfMatch } from '../policy/index.js'
+import { checkRead, checkWrite, MAX_GET_DOWNLOAD_BYTES, MAX_RESPONSE_BYTES, requiresIfMatch } from '../policy/index.js'
 import { plannedRequest, sendApiCall } from './apiCall.js'
 import { type BatchLine, openRealm, previewInput, realmShape, runApiBatchTool, workspaceInput } from './run.js'
 
@@ -85,7 +85,7 @@ export function registerApiUpdate(server: McpServer, app: App) {
           ctx.preview = true
           const { session } = await openRealm(app, ctx, params.realm)
           const { body: _body, ...request } = plannedRequest(session.host, { ...target, ...params }, writeChecked)
-          return { preview: true, note: UPDATE_PREVIEW_NOTE, request, revisionChecked, changed: changes }
+          return { preview: true, note: UPDATE_PREVIEW_NOTE, request, revisionChecked, changed: shown(changes) }
         }
 
         let written: Awaited<ReturnType<typeof sendApiCall>>
@@ -104,11 +104,27 @@ export function registerApiUpdate(server: McpServer, app: App) {
           headers: written.headers,
           revisionChecked,
           ...(revisionChecked ? {} : { note: 'no revision check: the GET returned no X-ETag or ETag.' }),
-          changed: changes
+          changed: shown(changes)
         }
       })
     }
   )
+}
+
+const LONG_VALUE_CHARACTERS = 2000
+
+function shortened(value: unknown): unknown {
+  const text = JSON.stringify(value)
+  return text !== undefined && text.length > LONG_VALUE_CHARACTERS ? { notShown: `${text.length} characters` } : value
+}
+
+function shown(changes: Change[]): Change[] {
+  if (Buffer.byteLength(JSON.stringify(changes)) <= MAX_RESPONSE_BYTES) return changes
+  return changes.map((change) => ({
+    path: change.path,
+    ...('old' in change ? { old: shortened(change.old) } : {}),
+    ...('new' in change ? { new: shortened(change.new) } : {})
+  }))
 }
 
 const GUEST_SCHEMA_PROPERTIES = /^\/api\/events\/[^/]+\/guestschema\/properties\/?$/

@@ -63,14 +63,19 @@ function checkShiftedIndexes(
   removals: Array<{ segments: string[] }>,
   sets: Array<{ path: string; segments: string[] }>
 ) {
-  const shifted = new Set<string>()
+  const lowestRemoved = new Map<string, number>()
   for (const { segments } of removals) {
     const parent = segments.slice(0, -1)
-    if (Array.isArray(valueAt(root, parent))) shifted.add(parent.join('.'))
+    const index = Number(segments.at(-1))
+    if (!Array.isArray(valueAt(root, parent)) || !Number.isInteger(index)) continue
+    const key = parent.join('.')
+    lowestRemoved.set(key, Math.min(lowestRemoved.get(key) ?? index, index))
   }
   for (const { path, segments } of sets) {
     for (let length = 0; length < segments.length; length++) {
-      if (shifted.has(segments.slice(0, length).join('.')) && INDEX.test(segments[length] ?? '')) {
+      const lowest = lowestRemoved.get(segments.slice(0, length).join('.'))
+      const segment = segments[length] ?? ''
+      if (lowest !== undefined && INDEX.test(segment) && Number(segment) >= lowest) {
         throw fail.badUpdatePath(path, 'remove takes items out of the same array, so this index would move')
       }
     }

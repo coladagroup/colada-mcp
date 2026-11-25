@@ -80,7 +80,7 @@ export class WorkspaceDirectory {
       )
     }
     throw new ToolError(
-      `The "workspace" parameter "${input}" matches ${matches.length} workspaces; pass the id:\n${lines(matches)}`,
+      `The "workspace" parameter "${input}" matches ${matches.length} workspaces; pass the id:\n${lines(matches)}${matches.length > MAX_LISTED ? `\n${FULL_LIST}` : ''}`,
       'refused',
       'workspaceAmbiguous'
     )

@@ -104,6 +104,13 @@ describe('COLADA_NO_BROWSER (S2, AC-7.2)', () => {
     )
   })
 
+  it('logout warns that this server cannot sign in again', async () => {
+    const h = await setup({ noBrowser: true })
+    const answer = await h.call('logout')
+    expect(answer.isError).toBe(false)
+    expect(answer.body.message).toContain('This server runs without a browser, so it cannot sign in again')
+  })
+
   it('a valid stored refresh token still works', async () => {
     const h = await setup({ noBrowser: true })
     const answer = await h.call('list_workspaces')
@@ -150,6 +157,19 @@ describe('workspace errors (S11, AC-7.9)', () => {
     expect(answer.body.error).toContain('… and 2 more.')
     expect(answer.body.error).toContain('Call list_workspaces for the full list.')
     expect(answer.body.error).not.toContain('Client ')
+  })
+
+  it('a name shared by more than 10 workspaces points to list_workspaces', async () => {
+    const world = new FakeWorld()
+    const same = ids.slice(0, 12)
+    world.addRealm(STAGE_HOST, { user: 'frank', members: same, workspaces: same.map((id) => workspace(id, 'Same')) })
+    const store = new FakeStore()
+    world.seedRefreshToken(STAGE_HOST, store)
+    const h = await createHarness(world, [STAGE_HOST], store)
+    harnesses.push(h)
+    const answer = await h.call('api_get', { workspace: 'Same', service: 's-events', path: '/api/events' })
+    expect(answer.body.error).toContain('… and 2 more.')
+    expect(answer.body.error).toContain('Call list_workspaces for the full list.')
   })
 
   it('a missing workspace lists no workspace at all', async () => {
