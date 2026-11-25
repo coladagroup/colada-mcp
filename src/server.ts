@@ -17,6 +17,7 @@ import { registerGetConventions } from './tools/getConventions.js'
 import { registerListWorkspaces } from './tools/listWorkspaces.js'
 import { registerLogout } from './tools/logout.js'
 import { registerOfferTools } from './tools/offerTools.js'
+import { registerProjectTaskTools } from './tools/projectTaskTools.js'
 import { registerTimesheetTools } from './tools/timesheetTools.js'
 import { version } from './version.js'
 
@@ -45,6 +46,7 @@ export function createServer(app: App): McpServer {
   registerTimesheetTools(server, app)
   registerOfferTools(server, app)
   registerBudgetTools(server, app)
+  registerProjectTaskTools(server, app)
   registerLogout(server, app)
   return server
 }

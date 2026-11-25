@@ -191,6 +191,16 @@ export const messages = {
   writeNoBlankRow: (offer: string) =>
     `replaceBlankRow: the budget of offer ${offer} has no blank row (empty name, no price, no sub-rows, no timesheet copies). Nothing was written.`,
   writeLeadArchived: (id: string) => `Lead ${id} is archived and cannot be changed.`,
+  writeProjectArchived: (id: string) => `Project ${id} is archived and cannot be changed.`,
+  writeNoTaskBoards: (source: string, workspace: string) =>
+    `"${source}" has no task boards in workspace ${workspace} (taskBoards/${source}). Nothing was written.`,
+  writeUnknownBoard: (board: string, source: string, known: string[]) =>
+    `Board "${board}" is not a task board of ${source}. Boards: ${known.join(', ')}. Nothing was written.`,
+  writeArchiveBoard: () =>
+    'The "archived" board archives a task, and these tools do not archive tasks. Use the Campaigns app. Nothing was written.',
+  writeUnknownTask: (task: string, source: string) =>
+    `Task "${task}" is not on the task boards of ${source}. Nothing was written.`,
+  writeTaskArchived: (task: string) => `Task ${task} is archived and cannot be changed. Nothing was written.`,
   writeBadPosition: (position: number, length: number) => `position ${position} is outside 0..${length}.`,
   writeTicketEntity: (ticket: string) =>
     `entity cannot be set for service ticket ${ticket}: service-ticket entries have no budget copy. Nothing was written.`,

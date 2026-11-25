@@ -63,6 +63,9 @@ describe('tools/list (AC24, AC32)', () => {
       'campaigns_add_budget_rows',
       'campaigns_update_budget_row',
       'campaigns_remove_budget_rows',
+      'campaigns_update_project',
+      'campaigns_create_task',
+      'campaigns_update_task',
       'logout'
     ])
     const annotations = Object.fromEntries(tools.map((tool) => [tool.name, tool.annotations]))
@@ -81,7 +84,10 @@ describe('tools/list (AC24, AC32)', () => {
       'campaigns_update_lead',
       'campaigns_add_budget_rows',
       'campaigns_update_budget_row',
-      'campaigns_remove_budget_rows'
+      'campaigns_remove_budget_rows',
+      'campaigns_update_project',
+      'campaigns_create_task',
+      'campaigns_update_task'
     ]) {
       expect(annotations[name]).toEqual({ readOnlyHint: false, destructiveHint: true, idempotentHint: false })
     }

@@ -11,7 +11,24 @@ export const WRITE_TOOLS = [
   'campaigns_create_lead',
   'campaigns_update_lead',
   'campaigns_update_budget_row',
-  'campaigns_remove_budget_rows'
+  'campaigns_remove_budget_rows',
+  'campaigns_update_project',
+  'campaigns_create_task',
+  'campaigns_update_task'
+] as const
+
+export const PROJECT_UPDATE_FIELDS = ['status', 'type', 'updatedAt'] as const
+
+export const TASK_UPDATE_FIELDS = [
+  'name',
+  'summary',
+  'dueDate',
+  'priority',
+  'assignees',
+  'assignedAt',
+  'mentions',
+  'updatedAt',
+  'updatedBy'
 ] as const
 
 export const LEAD_UPDATE_FIELDS = [
@@ -124,10 +141,30 @@ export const WRITE_RULES: readonly WriteRule[] = [
     'updatedAt',
     'updatedBy'
   ]),
-  rule('W26', 'campaigns_update_lead', 'patch', `planner/${ID}/{field}`, ['name', 'status'])
+  rule('W26', 'campaigns_update_lead', 'patch', `planner/${ID}/{field}`, ['name', 'status']),
+  rule('W27', 'campaigns_update_project', 'patch', `projects/${ID}/{field}`, PROJECT_UPDATE_FIELDS),
+  rule('W28', 'campaigns_create_task', 'put', `taskBoards/${ID}/taskCounter`),
+  rule('W29', 'campaigns_create_task', 'patch', `taskBoards/${ID}/boards/${ID}/tasks/${ID}`),
+  rule('W30', 'campaigns_create_task', 'patch', `externalIds/${ID}`),
+  rule('W31', 'campaigns_create_task', 'put', `invoices/${ID}/${ID}/tasks`),
+  rule(
+    'W32',
+    'campaigns_update_task',
+    'patch',
+    `taskBoards/${ID}/boards/${ID}/tasks/${ID}/{field}`,
+    TASK_UPDATE_FIELDS
+  ),
+  rule('W33', 'campaigns_update_task', 'patch', `taskBoards/${ID}/boards/${ID}/tasks/${ID}`)
 ]
 
-export const WRITE_PERMISSIONS: Record<WriteTool, string> = {
+const TASK_MANAGE_PERMISSIONS = [
+  'campaigns_app/tasks:manage',
+  'campaigns_app/projects/tasks:manage',
+  'campaigns_app/offers/tasks:manage',
+  'campaigns_app/leads/tasks:manage'
+] as const
+
+export const WRITE_PERMISSIONS: Record<WriteTool, string | readonly string[]> = {
   campaigns_add_timesheet_report: 'campaigns_app/timesheet/me:manage',
   campaigns_update_timesheet_report: 'campaigns_app/timesheet/me:manage',
   campaigns_create_offer: 'campaigns_app/offers:manage',
@@ -136,7 +173,10 @@ export const WRITE_PERMISSIONS: Record<WriteTool, string> = {
   campaigns_create_lead: 'campaigns_app/leads:manage',
   campaigns_update_lead: 'campaigns_app/leads:manage',
   campaigns_update_budget_row: 'campaigns_app/offers/budget:manage',
-  campaigns_remove_budget_rows: 'campaigns_app/offers/budget:manage'
+  campaigns_remove_budget_rows: 'campaigns_app/offers/budget:manage',
+  campaigns_update_project: 'campaigns_app/projects/settings:manage',
+  campaigns_create_task: TASK_MANAGE_PERMISSIONS,
+  campaigns_update_task: TASK_MANAGE_PERMISSIONS
 }
 
 export const PERSONAL_INPUT_FIELDS: Record<WriteTool, readonly string[]> = {
@@ -148,7 +188,10 @@ export const PERSONAL_INPUT_FIELDS: Record<WriteTool, readonly string[]> = {
   campaigns_create_lead: ['name', 'contact', 'summary'],
   campaigns_update_lead: ['name', 'contact', 'summary'],
   campaigns_update_budget_row: [],
-  campaigns_remove_budget_rows: []
+  campaigns_remove_budget_rows: [],
+  campaigns_update_project: [],
+  campaigns_create_task: ['summary', 'assignees'],
+  campaigns_update_task: ['summary', 'assignees']
 }
 
 export const IDENTITY_INPUT_FIELDS = [
@@ -182,6 +225,7 @@ export function writeRefusal(tool: WriteTool, op: WriteOp, ctx: WriteContext): W
   if (op.method !== 'PUT' && op.method !== 'PATCH') return 'X4'
   const entries = entriesOf(op)
   if (entries === null) return 'shape'
+  if (entries.some((entry) => entry.value === null) && !isTaskMove(tool, entries)) return 'X5'
   for (const entry of entries) {
     const reason = deniedBy(tool, entry, ctx)
     if (reason) return reason
@@ -202,7 +246,7 @@ export function plannedRefusal(tool: WriteTool, planned: PlannedWrite, workspace
     segments: splitPath(planned.path),
     value: null
   }
-  const reason = pathDenied(entry.segments, workspace)
+  const reason = pathDenied(tool, entry, workspace)
   if (reason) return reason
   const ctx = { workspace, uid: '' }
   return WRITE_RULES.some((candidate) => candidate.tool === tool && matches(candidate, entry, ctx)) ? null : 'table'
@@ -221,9 +265,10 @@ export function checkFirebaseWrite(tool: WriteTool, op: WriteOp, ctx: WriteConte
 }
 
 export function checkWritePermission(tool: WriteTool, permissions: ReadonlySet<string>, workspace: string): void {
-  for (const permission of [APP_VIEW, WRITE_PERMISSIONS[tool]]) {
-    if (!permissions.has(permission)) {
-      throw fail.writeMissingPermission(permission, workspace, tool)
+  for (const required of [APP_VIEW, WRITE_PERMISSIONS[tool]]) {
+    const anyOf = typeof required === 'string' ? [required] : required
+    if (!anyOf.some((permission) => permissions.has(permission))) {
+      throw fail.writeMissingPermission(anyOf.join(' or '), workspace, tool)
     }
   }
 }
@@ -248,9 +293,10 @@ function entriesOf(op: WriteOp): Entry[] | null {
   }))
 }
 
-function pathDenied(segments: readonly string[], workspace: string): WriteRefusal | null {
+function pathDenied(tool: WriteTool, entry: Entry, workspace: string): WriteRefusal | null {
+  const { segments } = entry
   const [root, ws, node] = segments
-  if (root === 'workspaces' && node === 'projects') return 'X1'
+  if (root === 'workspaces' && node === 'projects' && !isProjectFieldUpdate(tool, entry)) return 'X1'
   if (root === 'workspaces' && node === 'secrets') return 'X2'
   if (root === 'workspaces' && node === 'deals' && segments[4] === 'costCenter') return 'X3'
   if (root === 'workspaces' && ws !== workspace) return 'X8'
@@ -258,21 +304,54 @@ function pathDenied(segments: readonly string[], workspace: string): WriteRefusa
   return null
 }
 
+function isProjectFieldUpdate(tool: WriteTool, { op, segments }: Entry): boolean {
+  return (
+    tool === 'campaigns_update_project' &&
+    op === 'patch' &&
+    segments.length === 5 &&
+    (PROJECT_UPDATE_FIELDS as readonly string[]).includes(segments[4] ?? '')
+  )
+}
+
+function isTaskNode(segments: readonly string[]): boolean {
+  return (
+    segments[0] === 'workspaces' && segments[2] === 'taskBoards' && segments[4] === 'boards' && segments[6] === 'tasks'
+  )
+}
+
+function isTaskMove(tool: WriteTool, entries: Entry[]): boolean {
+  if (tool !== 'campaigns_update_task' || entries.length !== 2) return false
+  const [removed, added] = [entries.find((e) => e.value === null), entries.find((e) => e.value !== null)]
+  if (!removed || !added || !isPlainObject(added.value)) return false
+  const same = (index: number) => removed.segments[index] === added.segments[index]
+  return (
+    [removed, added].every((entry) => entry.segments.length === 8 && isTaskNode(entry.segments)) &&
+    same(1) &&
+    same(3) &&
+    !same(5) &&
+    added.segments[7] === added.value.uid
+  )
+}
+
 function deniedBy(tool: WriteTool, entry: Entry, ctx: WriteContext): WriteRefusal | null {
   const { segments, value } = entry
   const [root, , node] = segments
-  const byPath = pathDenied(segments, ctx.workspace)
+  const byPath = pathDenied(tool, entry, ctx.workspace)
   if (byPath) return byPath
   if (root === 'workspaces' && node === 'deals' && segments.length === 4 && isPlainObject(value)) {
     if ('costCenter' in value) return 'X3'
   }
+  const taskMove = tool === 'campaigns_update_task' && segments.length === 8 && isTaskNode(segments)
+  if (value === null && taskMove) return null
   if (value === null || value === undefined) return 'X5'
   if (entry.op === 'put' && isEmpty(value)) return 'X6'
   const last = segments[segments.length - 1] ?? ''
   const onDeal = root === 'workspaces' && node === 'deals'
+  const checked = (given: unknown) => typeof given === 'string' && (ctx.checkedUsers?.has(given) ?? false)
   const identityAllowed = (field: string, given: unknown) =>
     given === ctx.uid ||
-    (onDeal && field === 'accountManager' && typeof given === 'string' && (ctx.checkedUsers?.has(given) ?? false))
+    (onDeal && field === 'accountManager' && checked(given)) ||
+    (taskMove && field === 'owner' && checked(given))
   if (IDENTITY_BODY_FIELDS.includes(last) && !identityAllowed(last, value)) return 'X7'
   if (
     isPlainObject(value) &&

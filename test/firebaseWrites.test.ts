@@ -60,7 +60,14 @@ const EXPECTED_RULES: Array<[string, WriteTool, 'put' | 'patch', string]> = [
   ['W23', 'campaigns_remove_budget_rows', 'patch', 'workspaces/{ws}/planner/{id}/{field}'],
   ['W24', 'campaigns_remove_budget_rows', 'patch', 'workspaces/{ws}/history/{id}'],
   ['W25', 'campaigns_update_lead', 'patch', 'workspaces/{ws}/deals/{id}/{field}'],
-  ['W26', 'campaigns_update_lead', 'patch', 'workspaces/{ws}/planner/{id}/{field}']
+  ['W26', 'campaigns_update_lead', 'patch', 'workspaces/{ws}/planner/{id}/{field}'],
+  ['W27', 'campaigns_update_project', 'patch', 'workspaces/{ws}/projects/{id}/{field}'],
+  ['W28', 'campaigns_create_task', 'put', 'workspaces/{ws}/taskBoards/{id}/taskCounter'],
+  ['W29', 'campaigns_create_task', 'patch', 'workspaces/{ws}/taskBoards/{id}/boards/{id}/tasks/{id}'],
+  ['W30', 'campaigns_create_task', 'patch', 'externalIds/{id}'],
+  ['W31', 'campaigns_create_task', 'put', 'workspaces/{ws}/invoices/{id}/{id}/tasks'],
+  ['W32', 'campaigns_update_task', 'patch', 'workspaces/{ws}/taskBoards/{id}/boards/{id}/tasks/{id}/{field}'],
+  ['W33', 'campaigns_update_task', 'patch', 'workspaces/{ws}/taskBoards/{id}/boards/{id}/tasks/{id}']
 ]
 
 const EXPECTED_FIELDS: Record<string, string[]> = {
@@ -70,8 +77,12 @@ const EXPECTED_FIELDS: Record<string, string[]> = {
   W20: ['total', 'allocated'],
   W23: ['total', 'allocated'],
   W25: [...LEAD_UPDATE_FIELDS, 'updatedAt', 'updatedBy'],
-  W26: ['name', 'status']
+  W26: ['name', 'status'],
+  W27: ['status', 'type', 'updatedAt'],
+  W32: ['name', 'summary', 'dueDate', 'priority', 'assignees', 'assignedAt', 'mentions', 'updatedAt', 'updatedBy']
 }
+
+const OUTSIDE_TABLE = (rule: (typeof WRITE_RULES)[number]) => (rule.id === 'W27' ? 'X1' : 'table')
 
 function concretePath(pattern: readonly string[], field = 'name') {
   return pattern
@@ -118,7 +129,7 @@ describe('write path table (CONTRACT-phase5 §2.1)', () => {
         )
     )
     expect(others.length).toBeGreaterThan(0)
-    for (const tool of others) expect(writeRefusal(tool, opFor(rule), CTX)).toBe('table')
+    for (const tool of others) expect(writeRefusal(tool, opFor(rule), CTX)).toBe(OUTSIDE_TABLE(rule))
   })
 
   it('every listed field of a field row is allowed, and a field outside the list is refused', () => {
@@ -134,7 +145,9 @@ describe('write path table (CONTRACT-phase5 §2.1)', () => {
         expect(writeRefusal(rule.tool, { method: 'PATCH', path: '', body: { [path]: value } }, CTX)).toBeNull()
       }
       const path = concretePath(rule.pattern, 'somethingElse')
-      expect(writeRefusal(rule.tool, { method: 'PATCH', path: '', body: { [path]: 'x' } }, CTX)).toBe('table')
+      expect(writeRefusal(rule.tool, { method: 'PATCH', path: '', body: { [path]: 'x' } }, CTX)).toBe(
+        OUTSIDE_TABLE(rule)
+      )
     }
   })
 
@@ -303,6 +316,11 @@ describe('identity fields (AC-P8)', () => {
           rule.op === 'put'
             ? { method: 'PUT', path, body: value }
             : { method: 'PATCH', path: '', body: { [path]: value } }
+        if (rule.id === 'W27') {
+          expect(writeRefusal(tool, op(foreign), CTX)).toBe('X1')
+          expect(writeRefusal(tool, op(own), CTX)).toBe('X1')
+          continue
+        }
         if (fieldRow && rule.id === 'W14') {
           expect(writeRefusal(tool, op(foreign), CTX)).toBe('X7')
           continue
@@ -361,7 +379,10 @@ describe('personal input fields (P21, P33, AC-P10)', () => {
       campaigns_create_lead: ['name', 'contact', 'summary'],
       campaigns_update_lead: ['name', 'contact', 'summary'],
       campaigns_update_budget_row: [],
-      campaigns_remove_budget_rows: []
+      campaigns_remove_budget_rows: [],
+      campaigns_update_project: [],
+      campaigns_create_task: ['summary', 'assignees'],
+      campaigns_update_task: ['summary', 'assignees']
     })
   })
 })

@@ -26,6 +26,9 @@ Tools:
 | `campaigns_add_budget_rows` | Adds knowledge base, free and group rows to an offer budget and recomputes its total; can replace the blank row of a new offer. **It changes data.** |
 | `campaigns_update_budget_row` | Changes or moves one row of an offer budget. **It changes data.** |
 | `campaigns_remove_budget_rows` | Removes rows from an offer budget (not rows with timesheet copies, not the last row). **It changes data.** |
+| `campaigns_update_project` | Sets the status and/or type of one project. Nothing else of the project. **It changes data.** |
+| `campaigns_create_task` | Creates a task on the task boards of a project, offer or lead, without notification or email. **It changes data.** |
+| `campaigns_update_task` | Changes one task or moves it to another board, without notification or email. **It changes data.** |
 | `logout` | Ends the stored session. |
 
 > **Breaking change in 0.3.0.** The typed read tools `list_events`, `get_event`, `list_email_templates`, `get_email_template` and `get_registration_form` are removed. Use `api_get` instead (read the service doc with `get_api_doc` first). The server is no longer read-only.
@@ -129,14 +132,15 @@ Campaigns data is not in the backoffice API but in Firebase. `rtdb_get`, `firest
 
 ### Campaigns writes
 
-Nine `campaigns_*` tools change Campaigns data in the Realtime Database: timesheet entries, offers, leads and budget rows. Each one writes the same nodes and fields as the matching action in the Campaigns app.
+Twelve `campaigns_*` tools change Campaigns data in the Realtime Database: timesheet entries, offers, leads, budget rows, project status and type, and tasks. Each one writes the same nodes and fields as the matching action in the Campaigns app.
 
 - They need your Campaigns permissions for that action, as in the app. Timesheet tools change only your own entries.
-- `owner`, `updatedBy` and `createdBy` are always you. There is no undo. No tool deletes a Firebase node: `campaigns_remove_budget_rows` removes rows inside one budget only.
+- `owner`, `updatedBy` and `createdBy` are always you. There is no undo. No tool deletes a Firebase node: `campaigns_remove_budget_rows` removes rows inside one budget only, and `campaigns_update_task` moves a task to another board in one write.
 - Ids you pass (project, row, offer, lead, cost center, knowledge base item, unit) must exist in the workspace, or nothing is written.
 - Personal fields (for example a timesheet description or a lead name) are accepted only with `COLADA_ALLOW_PERSONAL_DATA=true`.
 - A change by someone else between read and write is kept: the tool reads again and applies your change on top, at most 3 times.
-- The tools write only to an allowlist of paths below your workspace, never to `projects/`.
+- The tools write only to an allowlist of paths below your workspace. In `projects/` only `campaigns_update_project` writes, and only `status`, `type` and `updatedAt`.
+- The task tools write the task only: no notification, email or files. Assignees are not told by the app.
 - Every write gets its own line in the call log, without the body.
 
 ## Login

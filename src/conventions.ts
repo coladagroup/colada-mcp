@@ -132,20 +132,22 @@ Hidden data and limits
 
 ## Campaigns writes
 
-Nine tools change Campaigns data. Each one writes the same nodes and fields as the matching action in the Campaigns app, with your Campaigns permissions.
+Twelve tools change Campaigns data. Each one writes the same nodes and fields as the matching action in the Campaigns app, with your Campaigns permissions.
 - campaigns_add_timesheet_report, campaigns_update_timesheet_report: your own timesheet entries only. With entity the entry is also copied into that budget row; a change of project, entity or date moves the copy.
 - campaigns_create_offer (optionally from a lead), campaigns_update_offer, campaigns_create_lead, campaigns_update_lead (lead fields; name and status are copied to its offer; the cost center is never changed).
 - campaigns_add_budget_rows: knowledge base, free and group rows in an offer budget, then the offer total and allocated, and history records as the budget table writes them. replaceBlankRow: true removes the blank row of a new offer in the same write.
 - campaigns_update_budget_row (fields of one row, or a move with parentRow and position) and campaigns_remove_budget_rows (rows inside one budget; rows with timesheet copies are refused; the last row cannot be removed, so add the new rows first).
+- campaigns_update_project: only status and type of a project ("" = none), plus updatedAt. No other project field can be changed.
+- campaigns_create_task, campaigns_update_task: tasks on the task boards of a project, offer or lead (taskBoards/<source>). Create takes the next task number and puts the task at the end of the board; update changes title, description, due date, priority, assignees and the board. They write the task only: no notification, email or files, so tell assignees yourself. They never archive or delete a task.
 - campaigns_kb_search (read only) finds knowledge base items by a part of the name; use the uid as kbItem.
 
 Rules
-- There is no undo. Nothing deletes a Firebase node; campaigns_remove_budget_rows only removes rows inside one budget. Call the tool with preview: true first: it runs every check and read and returns the writes in "writes" without sending them. Show them to the user and wait for a yes.
+- There is no undo. Nothing deletes a Firebase node; campaigns_remove_budget_rows only removes rows inside one budget, and a board change in campaigns_update_task moves the task in one write. Call the tool with preview: true first: it runs every check and read and returns the writes in "writes" without sending them. Show them to the user and wait for a yes.
 - On prod hosts (every host whose name does not start with stage-) the real call needs "previewId" from a preview of the same tool with the same input. It is valid for 10 minutes and works once. Without it the call is refused before anything is read or written. On stage hosts previewId is optional.
 - A preview reserves nothing: the real call reads fresh data and takes its own keys and offer number.
-- owner, updatedBy and createdBy are always you; they cannot be set. Timesheet entries you add belong to you. To book time as another user, call logout and log in as that user. projectManager and a lead accountManager take a uid or email of a Campaigns user of the workspace.
-- Ids you pass (project, entity, offer, lead, row, costCenter, kbItem, unit, parentRow) must exist in the workspace, or nothing is written.
-- Personal fields (timesheet description, offer person, participants and description, lead name, contact and summary) need personal data on.
+- owner, updatedBy and createdBy are always you; they cannot be set. Timesheet entries you add belong to you. To book time as another user, call logout and log in as that user. projectManager, a lead accountManager and task assignees take a uid or email of a Campaigns user of the workspace.
+- Ids you pass (project, entity, offer, lead, row, costCenter, kbItem, unit, parentRow, source, task, board, invoice) must exist in the workspace, or nothing is written.
+- Personal fields (timesheet description, offer person, participants and description, lead name, contact and summary, task description and assignees) need personal data on.
 - A change by someone else between read and write is kept: the tool reads again and applies your change on top, at most 3 times.
 - "written" in the output lists every write. When a later write fails after an earlier one was saved, the error says what is saved and what is not. Do not repeat the whole call; read the data and fix only the missing part.
 
