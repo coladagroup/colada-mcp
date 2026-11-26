@@ -327,5 +327,9 @@ export const PERSONAL_DATA_ROUTE_ALLOWLIST: readonly RouteRule[] = [
     service: 's-events-guests',
     method: 'PUT',
     pattern: /^\/api\/events\/[^/]+\/guestschema\/properties\/[^/]+\/synced$/
-  }
+  },
+  { id: 'A60', service: 's-notifications', method: 'GET', pattern: /^\/api\/notification-rules(\/[^/]+)?$/ },
+  { id: 'A61', service: 's-notifications', method: 'POST', pattern: /^\/api\/notification-rules$/ },
+  { id: 'A62', service: 's-notifications', method: 'PUT', pattern: /^\/api\/notification-rules\/[^/]+$/ },
+  { id: 'A63', service: 's-notifications', method: 'PUT', pattern: /^\/api\/notification-rules\/[^/]+\/copied$/ }
 ]
