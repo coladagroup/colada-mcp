@@ -129,7 +129,11 @@ const ALLOW_CASES: Case[] = [
   ['A56', 's-events-guests', 'GET', '/api/events/e1/guestschema'],
   ['A57', 's-events-guests', 'PUT', '/api/events/e1/guestschema/properties'],
   ['A58', 's-events-guests', 'PUT', '/api/events/e1/guestschema/synced'],
-  ['A59', 's-events-guests', 'PUT', '/api/events/e1/guestschema/properties/contact_x/synced']
+  ['A59', 's-events-guests', 'PUT', '/api/events/e1/guestschema/properties/contact_x/synced'],
+  ['A60', 's-notifications', 'GET', '/api/notification-rules/available-actions'],
+  ['A61', 's-notifications', 'POST', '/api/notification-rules'],
+  ['A62', 's-notifications', 'PUT', '/api/notification-rules/r1'],
+  ['A63', 's-notifications', 'PUT', '/api/notification-rules/r1/copied']
 ]
 
 const BORDERLINE_NEIGHBOURS: Array<[service: string, method: string, path: string]> = [
@@ -141,7 +145,8 @@ const BORDERLINE_NEIGHBOURS: Array<[service: string, method: string, path: strin
   ['s-licenses', 'GET', '/api/licenses/items'],
   ['s-orgstructure', 'PUT', '/api/orgstructure/users/u1/departments'],
   ['s-consumer-portal-admin', 'GET', '/api/consumerportal/personalgallery/consumers/c1/items'],
-  ['s-events-resources-inventory', 'GET', '/api/events/e1/resources/slots']
+  ['s-events-resources-inventory', 'GET', '/api/events/e1/resources/slots'],
+  ['s-notifications', 'GET', '/api/notifications']
 ]
 
 const FULL_BLOCK_SERVICES = [
