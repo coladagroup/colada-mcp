@@ -39,12 +39,49 @@ export const DELETE_DENYLIST: readonly RouteRule[] = [
   }
 ]
 
+const UUID_SEGMENT = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+
 export const DELETE_ALLOWLIST: readonly RouteRule[] = [
   {
     id: 'X01',
     service: 's-events-forms',
     method: 'DELETE',
     pattern: /^\/api\/events\/[^/]+\/formtemplates\/registration\/published$/
+  },
+  {
+    id: 'X02',
+    service: 's-staffing',
+    method: 'DELETE',
+    pattern: new RegExp(`^/api/events/${UUID_SEGMENT}/phases/${UUID_SEGMENT}/requirements/${UUID_SEGMENT}$`)
+  },
+  {
+    id: 'X03',
+    service: 's-events-resources',
+    method: 'DELETE',
+    pattern: new RegExp(`^/api/events/${UUID_SEGMENT}/resources/${UUID_SEGMENT}$`)
+  }
+]
+
+export const IF_MATCH_REQUIRED: readonly RouteRule[] = [
+  { id: 'M01', service: 's-events-guests', method: 'PATCH', pattern: /^\/api\/events\/[^/]+\/guests\/[^/]+\/?$/ },
+  {
+    id: 'M02',
+    service: 's-events-guests',
+    method: 'PATCH',
+    pattern: /^\/api\/events\/[^/]+\/guests\/[^/]+\/attributes\/?$/
+  },
+  {
+    id: 'M03',
+    service: 's-events-guests',
+    method: 'PUT',
+    pattern: /^\/api\/events\/[^/]+\/guestschema\/properties\/?$/
+  },
+  { id: 'M04', service: 's-email-templates', method: 'PATCH', pattern: /^\/api\/emailtemplates\/[^/]+\/?$/ },
+  {
+    id: 'M05',
+    service: 's-email-templates',
+    method: 'PATCH',
+    pattern: /^\/api\/events\/[^/]+\/emailtemplates\/[^/]+\/?$/
   }
 ]
 
@@ -97,6 +134,7 @@ export const PERSONAL_DATA_SERVICES: readonly string[] = [
   's-events-payments',
   's-guest-nominations',
   's-assistant-scanner',
+  's-staffing',
   's-printers',
   's-emailcomposer',
   's-email-logger',

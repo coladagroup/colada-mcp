@@ -259,7 +259,8 @@ export async function createHarness(
   world: FakeWorld,
   hosts: string[] = [STAGE_HOST],
   store = new FakeStore(),
-  allowPersonalData = false
+  allowPersonalData = false,
+  extraDeps: { noBrowser?: boolean } = {}
 ): Promise<Harness> {
   const opened: string[] = []
   const logs: CallLogEntry[] = []
@@ -276,6 +277,7 @@ export async function createHarness(
       logs.push(entry)
     },
     pid: 4242,
+    ...extraDeps,
     openBrowser: async (url) => {
       opened.push(url)
       await hooks.onOpen?.(url)

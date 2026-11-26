@@ -220,7 +220,9 @@ describe('callBackend (CONTRACT §2, §5)', () => {
     const { world, session } = await setup()
     world.backendStatus.set(PATH, status)
     const request = { workspaceId: WS_A, method: 'PUT', path: PATH }
-    expect(await errorOf(callBackend(new ApiClient(world.fetch), session, request, { httpStatus: null }))).toBe(message)
+    expect(await errorOf(callBackend(new ApiClient(world.fetch), session, request, { httpStatus: null }))).toBe(
+      `${message} The backend gave no reason.`
+    )
   })
 
   it('AC36: a write that gets 401 is sent exactly once and the token is invalidated', async () => {

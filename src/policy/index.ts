@@ -4,9 +4,10 @@ import { checkHeaders } from './headers.js'
 import { checkWriteMethod } from './method.js'
 import { checkPath } from './path.js'
 import { checkPersonalData } from './personalData.js'
+import { onBlockList } from './routes.js'
 import { checkSecrets } from './secrets.js'
 import { checkService } from './service.js'
-import type { Method } from './tables.js'
+import { IF_MATCH_REQUIRED, type Method } from './tables.js'
 
 export { checkService } from './service.js'
 export { MAX_GET_DOWNLOAD_BYTES, MAX_RESPONSE_BYTES } from './size.js'
@@ -46,4 +47,9 @@ function check(resolveMethod: () => Method, input: PolicyInput, allowPersonalDat
   checkSecrets(route, target)
   checkPersonalData(route, target, allowPersonalData)
   return { method: route.method, headers: checkHeaders(input.headers ?? {}) }
+}
+
+export function requiresIfMatch(method: Method, input: PolicyInput): boolean {
+  const match = checkPath(input.path)
+  return onBlockList(IF_MATCH_REQUIRED, { method, service: input.service, match, blockMatch: blockForm(match) })
 }

@@ -186,9 +186,28 @@ function isRecords(value: unknown): value is Record<string, unknown> {
   )
 }
 
+const STORAGE_URL = /https:\/\/firebasestorage\.googleapis\.com\/[^\s"'<>]*/g
+const TOKEN_PARAM = /(\?|&amp;|&)token=[^&\s"'<>)#]*/g
+
+function withoutStorageToken(url: string): string {
+  return url
+    .replace(TOKEN_PARAM, (_match, separator: string) => (separator === '?' ? '?' : ''))
+    .replace(/\?(&amp;|&)/, '?')
+    .replace(/\?(?=$|[)#])/, '')
+}
+
+export function stripStorageTokens(value: unknown): unknown {
+  if (typeof value === 'string') return value.replace(STORAGE_URL, withoutStorageToken)
+  if (Array.isArray(value)) return value.map(stripStorageTokens)
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, stripStorageTokens(item)]))
+  }
+  return value
+}
+
 function finish(result: Record<string, unknown>, removed: Set<string>, removedRecords: number) {
   const output = {
-    ...result,
+    ...(stripStorageTokens(result) as Record<string, unknown>),
     removedFields: [...removed].sort(),
     ...(removedRecords > 0 ? { removedRecords } : {})
   }

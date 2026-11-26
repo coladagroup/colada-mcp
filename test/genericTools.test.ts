@@ -49,6 +49,7 @@ describe('tools/list (AC24, AC32)', () => {
       'api_get',
       'api_write',
       'api_write_batch',
+      'api_update',
       'rtdb_get',
       'firestore_get',
       'campaigns_budget',
@@ -62,6 +63,9 @@ describe('tools/list (AC24, AC32)', () => {
       'campaigns_add_budget_rows',
       'campaigns_update_budget_row',
       'campaigns_remove_budget_rows',
+      'campaigns_update_project',
+      'campaigns_create_task',
+      'campaigns_update_task',
       'logout'
     ])
     const annotations = Object.fromEntries(tools.map((tool) => [tool.name, tool.annotations]))
@@ -70,6 +74,7 @@ describe('tools/list (AC24, AC32)', () => {
     expect(annotations.campaigns_kb_search).toEqual({ readOnlyHint: true })
     expect(annotations.api_write).toEqual({ readOnlyHint: false, destructiveHint: true, idempotentHint: false })
     expect(annotations.api_write_batch).toEqual({ readOnlyHint: false, destructiveHint: true, idempotentHint: false })
+    expect(annotations.api_update).toEqual({ readOnlyHint: false, destructiveHint: true, idempotentHint: false })
     for (const name of [
       'campaigns_add_timesheet_report',
       'campaigns_update_timesheet_report',
@@ -79,7 +84,10 @@ describe('tools/list (AC24, AC32)', () => {
       'campaigns_update_lead',
       'campaigns_add_budget_rows',
       'campaigns_update_budget_row',
-      'campaigns_remove_budget_rows'
+      'campaigns_remove_budget_rows',
+      'campaigns_update_project',
+      'campaigns_create_task',
+      'campaigns_update_task'
     ]) {
       expect(annotations[name]).toEqual({ readOnlyHint: false, destructiveHint: true, idempotentHint: false })
     }

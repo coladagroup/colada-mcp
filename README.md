@@ -12,6 +12,7 @@ Tools:
 | `api_get` | Sends one GET to a backoffice service (`s-*`) in one workspace. Returns the status, the JSON body and the headers `Content-Range`, `ETag`, `X-ETag`, `Location`. |
 | `api_write` | Sends one POST, PUT or PATCH with a JSON body. **It changes data.** |
 | `api_write_batch` | Sends up to 25 `api_write` requests in one workspace with one approval; checks all items first and stops at the first failure. **It changes data.** |
+| `api_update` | Reads one record, changes the given dot paths (`set`, `remove`) and sends the full record back with `If-Match` from the read. Answers only the changed paths. **It changes data.** |
 | `rtdb_get` | Reads one node of the Campaigns Realtime Database in one workspace. Optional `where`, `fields`, `groupBy` and `sum` run in the MCP, for exact totals. Read only. |
 | `firestore_get` | Reads one document or one page of a collection of the Campaigns Firestore. Read only. |
 | `campaigns_budget` | Computes the budget of one Campaigns project or offer with the app's rules (reserve fees, options, VAT, exchange rates). Read only. |
@@ -25,13 +26,18 @@ Tools:
 | `campaigns_add_budget_rows` | Adds knowledge base, free and group rows to an offer budget and recomputes its total; can replace the blank row of a new offer. **It changes data.** |
 | `campaigns_update_budget_row` | Changes or moves one row of an offer budget. **It changes data.** |
 | `campaigns_remove_budget_rows` | Removes rows from an offer budget (not rows with timesheet copies, not the last row). **It changes data.** |
+| `campaigns_update_project` | Sets the status and/or type of one project. Nothing else of the project. **It changes data.** |
+| `campaigns_create_task` | Creates a task on the task boards of a project, offer or lead, without notification or email. **It changes data.** |
+| `campaigns_update_task` | Changes one task or moves it to another board, without notification or email. **It changes data.** |
 | `logout` | Ends the stored session. |
 
 > **Breaking change in 0.3.0.** The typed read tools `list_events`, `get_event`, `list_email_templates`, `get_email_template` and `get_registration_form` are removed. Use `api_get` instead (read the service doc with `get_api_doc` first). The server is no longer read-only.
 
 ## Install
 
-You only need Node.js 20 or later. Always use an exact version, as below. To update, change the version in your config on purpose.
+You only need Node.js 20 or later. Always use an exact version, as below.
+
+To update, change the version in your config on purpose and restart the client (Claude Desktop, Claude Code or Cursor): `npx` starts the new version only on a restart. `list_workspaces` shows the running `version`.
 
 ### Claude Desktop
 
@@ -42,7 +48,7 @@ Open Settings → Developer → Edit Config and add this to `claude_desktop_conf
   "mcpServers": {
     "colada": {
       "command": "npx",
-      "args": ["-y", "@colada-ag/mcp@0.3.0"]
+      "args": ["-y", "@colada-ag/mcp@0.8.0"]
     }
   }
 }
@@ -53,7 +59,7 @@ Restart Claude Desktop.
 ### Claude Code
 
 ```bash
-claude mcp add colada -- npx -y @colada-ag/mcp@0.3.0
+claude mcp add colada -- npx -y @colada-ag/mcp@0.8.0
 ```
 
 ### Cursor
@@ -66,13 +72,13 @@ Open Cursor Settings → MCP → Add new global MCP server, or edit `~/.cursor/m
     "colada": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@colada-ag/mcp@0.3.0"]
+      "args": ["-y", "@colada-ag/mcp@0.8.0"]
     }
   }
 }
 ```
 
-Use the global `~/.cursor/mcp.json`, not a project `.cursor/mcp.json`. In Cursor Settings → MCP, `colada` must be enabled and show 5 tools. If it fails with `spawn npx ENOENT`, Cursor does not find `npx` (for example with nvm): put the full path from `which npx` into `command`.
+Use the global `~/.cursor/mcp.json`, not a project `.cursor/mcp.json`. In Cursor Settings → MCP, `colada` must be enabled and list the Colada tools. If it fails with `spawn npx ENOENT`, Cursor does not find `npx` (for example with nvm): put the full path from `which npx` into `command`.
 
 Keep Privacy Mode on (Settings → General → Privacy) and do not turn on auto-run for these tools.
 
@@ -87,7 +93,25 @@ Keep Privacy Mode on (Settings → General → Privacy) and do not turn on auto-
 In Claude Code:
 
 ```bash
-claude mcp add colada --env COLADA_HOSTS=stage-admin.colada365.com -- npx -y @colada-ag/mcp@0.3.0
+claude mcp add colada --env COLADA_HOSTS=stage-admin.colada365.com -- npx -y @colada-ag/mcp@0.8.0
+```
+
+To have prod and stage side by side, add a second server entry for stage. Its tools then show up as `colada-stage`:
+
+```json
+{
+  "mcpServers": {
+    "colada": {
+      "command": "npx",
+      "args": ["-y", "@colada-ag/mcp@0.8.0"]
+    },
+    "colada-stage": {
+      "command": "npx",
+      "args": ["-y", "@colada-ag/mcp@0.8.0"],
+      "env": { "COLADA_HOSTS": "stage-admin.colada365.com" }
+    }
+  }
+}
 ```
 
 The server reads the Keycloak realm of each host from that host's public backoffice config. Tokens of a realm go only to its own host.
@@ -128,21 +152,26 @@ Campaigns data is not in the backoffice API but in Firebase. `rtdb_get`, `firest
 
 ### Campaigns writes
 
-Nine `campaigns_*` tools change Campaigns data in the Realtime Database: timesheet entries, offers, leads and budget rows. Each one writes the same nodes and fields as the matching action in the Campaigns app.
+Twelve `campaigns_*` tools change Campaigns data in the Realtime Database: timesheet entries, offers, leads, budget rows, project status and type, and tasks. Each one writes the same nodes and fields as the matching action in the Campaigns app.
 
 - They need your Campaigns permissions for that action, as in the app. Timesheet tools change only your own entries.
-- `owner`, `updatedBy` and `createdBy` are always you. There is no undo. No tool deletes a Firebase node: `campaigns_remove_budget_rows` removes rows inside one budget only.
+- `owner`, `updatedBy` and `createdBy` are always you. There is no undo. No tool deletes a Firebase node: `campaigns_remove_budget_rows` removes rows inside one budget only, and `campaigns_update_task` moves a task to another board in one write.
 - Ids you pass (project, row, offer, lead, cost center, knowledge base item, unit) must exist in the workspace, or nothing is written.
 - Personal fields (for example a timesheet description or a lead name) are accepted only with `COLADA_ALLOW_PERSONAL_DATA=true`.
-- A change by someone else between read and write is kept: the tool reads again and applies your change on top, at most 3 times.
-- The tools write only to an allowlist of paths below your workspace, never to `projects/`.
+- A change by someone else between read and write is kept: the tool reads again and applies your change on top, at most 3 times. campaigns_update_project and campaigns_update_task are the exception, as in the app: they write only the fields you change, but a board move writes the whole task as read, so read the task again right before a move.
+- The tools write only to an allowlist of paths below your workspace. In `projects/` only `campaigns_update_project` writes, and only `status`, `type` and `updatedAt`.
+- The task tools write the task only: no notification, email or files. Assignees are not told by the app.
 - Every write gets its own line in the call log, without the body.
 
 ## Login
 
 The first tool call opens the Colada login in your browser. Log in, then ask Claude to retry. The session is kept in the OS keychain (service `colada-mcp`) and lasts about one working day, also after a restart.
 
-The session ends when your Colada login in the browser ends (about 10 hours on prod), not 10 hours after the MCP login. If you were already logged in to Colada in the browser, the MCP login reuses that browser session and gets only the time it has left. `list_workspaces` shows the end time as `sessionEndsAt`, and in the last 30 minutes every tool answer has a `notice`. Log in fresh in the morning, before long jobs, so a series of writes does not stop in the middle.
+The session ends when your Colada login in the browser ends (about 10 hours on prod), not 10 hours after the MCP login. If you were already logged in to Colada in the browser, the MCP login reuses that browser session and gets only the time it has left. `list_workspaces` shows the end time as `sessionEndsAt`, and a `sessionNote` when it is shorter than 9.5 hours. In the last 30 minutes every tool answer has a `notice`.
+
+For a full session before long jobs: sign out of Colada in the browser, call `logout`, then log in again through the MCP. A series of writes then does not stop in the middle.
+
+Without a browser (for example on a server or in a scheduled job), set `COLADA_NO_BROWSER=1`. The server then never opens a login: with a valid stored session the tools work, without one every tool answers `login_required` at once.
 
 Each realm has its own login. The first call with another realm opens a second browser login on that realm's host. Log in there with your own user of that realm.
 

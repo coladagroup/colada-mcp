@@ -1,6 +1,11 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { type App, isoTime } from '../app.js'
+import { version } from '../version.js'
 import { openRealm, realmShape, runTool } from './run.js'
+
+function sessionNote(endsAt: string): string {
+  return `This Colada session ends at ${endsAt} because it reuses your browser sign-in (10 h limit). For a full 10 h: sign out of the backoffice in the browser, call logout, then sign in again.`
+}
 
 export function registerListWorkspaces(server: McpServer, app: App) {
   server.registerTool(
@@ -17,7 +22,13 @@ export function registerListWorkspaces(server: McpServer, app: App) {
         const { directory, session } = await openRealm(app, ctx, params.realm)
         const workspaces = await directory.list(ctx.state, true)
         const endsAt = await session.sessionEndsAt()
-        return { workspaces, sessionEndsAt: endsAt === null ? null : isoTime(endsAt) }
+        const shortEndsAt = session.shortSessionEndsAt()
+        return {
+          version,
+          workspaces,
+          sessionEndsAt: endsAt === null ? null : isoTime(endsAt),
+          ...(shortEndsAt === null ? {} : { sessionNote: sessionNote(isoTime(shortEndsAt)) })
+        }
       })
     }
   )

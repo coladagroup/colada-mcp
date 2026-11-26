@@ -6,6 +6,7 @@ import type { TokenStore } from './tokenStore.js'
 
 const MIN_VALIDITY_SECONDS = 30
 const BASE_KEY = 'base'
+const FULL_SESSION_SECONDS = 34_200
 
 export interface SessionDeps extends LoginDeps {
   store: TokenStore
@@ -29,6 +30,7 @@ export class RealmSession {
   private generation = 0
   private lastUser: string | null = null
   private endsAt: number | null | undefined
+  private shortEndsAt: number | null = null
   private readonly endListeners: Array<() => void> = []
 
   constructor(
@@ -43,6 +45,10 @@ export class RealmSession {
 
   knownEndsAt(): number | null {
     return this.endsAt ?? null
+  }
+
+  shortSessionEndsAt(): number | null {
+    return this.shortEndsAt
   }
 
   async sessionEndsAt(): Promise<number | null> {
@@ -92,6 +98,7 @@ export class RealmSession {
     this.generation++
     this.tokens.clear()
     this.endsAt = undefined
+    this.shortEndsAt = null
     for (const listener of this.endListeners) listener()
   }
 
@@ -156,7 +163,7 @@ export class RealmSession {
     }
   }
 
-  private async accept(result: TokenResult, generation: number) {
+  private async accept(result: TokenResult, generation: number, signIn = false) {
     if (result.refreshToken) {
       await this.deps.store.set(this.host, result.refreshToken)
       if (generation !== this.generation) {
@@ -165,12 +172,14 @@ export class RealmSession {
       }
       const lifetime = result.refreshExpiresIn ?? 0
       this.endsAt = lifetime > 0 ? this.deps.now() + lifetime : null
+      if (signIn) this.shortEndsAt = lifetime > 0 && lifetime < FULL_SESSION_SECONDS ? this.endsAt : null
     }
     if (result.accessToken) this.lastUser = userOf(decodeClaims(result.accessToken))
   }
 
   private async beginLogin(): Promise<never> {
     if (this.login) throw fail.loginInProgress()
+    if (this.deps.noBrowser) throw fail.noBrowserLogin()
     const generation = this.generation
     const attempt: LoginAttempt = { close: () => undefined }
     this.login = attempt
@@ -183,7 +192,7 @@ export class RealmSession {
         this.deps,
         async (result) => {
           if (!active()) return
-          await this.accept(result, generation)
+          await this.accept(result, generation, true)
           if (result.accessToken) {
             this.tokens.set(BASE_KEY, { token: result.accessToken, exp: expiresAt(decodeClaims(result.accessToken)) })
           }

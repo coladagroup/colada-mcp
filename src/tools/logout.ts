@@ -3,14 +3,19 @@ import type { App } from '../app.js'
 import { fail } from '../errors.js'
 import { openRealm, realmShape, runTool } from './run.js'
 
+const NO_BROWSER_AFTER_LOGOUT =
+  'This server runs without a browser, so it cannot sign in again: sign in once from a client with a browser on this computer.'
+
 export function registerLogout(server: McpServer, app: App) {
   const realmParam = realmShape(app).realm
   server.registerTool(
     'logout',
     {
-      description: app.multiRealm
-        ? 'Ends the stored Colada session of one realm, or of all realms when no realm is given. The next tool call opens the browser login again.'
-        : 'Ends the stored Colada session. The next tool call opens the browser login again.',
+      description: app.deps.noBrowser
+        ? `Ends the stored Colada session. ${NO_BROWSER_AFTER_LOGOUT}`
+        : app.multiRealm
+          ? 'Ends the stored Colada session of one realm, or of all realms when no realm is given. The next tool call opens the browser login again.'
+          : 'Ends the stored Colada session. The next tool call opens the browser login again.',
       inputSchema: realmParam
         ? { realm: realmParam.describe('Realm to log out from. Leave it out to log out from all realms.') }
         : {},
@@ -31,7 +36,8 @@ export function registerLogout(server: McpServer, app: App) {
         }
         ctx.user = user
         if (failed.length > 0) throw fail.logoutFailed(failed)
-        return { message: single ? `Logged out from ${ctx.realm}.` : 'Logged out from all realms.' }
+        const done = single ? `Logged out from ${ctx.realm}.` : 'Logged out from all realms.'
+        return { message: app.deps.noBrowser ? `${done} ${NO_BROWSER_AFTER_LOGOUT}` : done }
       })
   )
 }

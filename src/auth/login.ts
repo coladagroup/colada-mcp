@@ -10,6 +10,7 @@ export interface LoginDeps {
   openBrowser: (url: string) => Promise<void>
   log: (message: string) => void
   loginTimeoutMs?: number
+  noBrowser?: boolean
 }
 
 export interface PendingLogin {
