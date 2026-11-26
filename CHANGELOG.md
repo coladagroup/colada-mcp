@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.1
 
 ### Changes
 - s-notifications rule routes work without personal data: read, create, update and copy of `/api/notification-rules`, plus `available-actions` and `available-entities`. The notification feed (`/api/notifications`) stays personal data.
