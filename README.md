@@ -148,7 +148,7 @@ Campaigns data is not in the backoffice API but in Firebase. `rtdb_get`, `firest
 
 - The server gets a Firebase token with your own Colada login for the workspace of the call. The token stays in memory and is not stored; Firebase access ends with your Colada session.
 - You see what the Campaigns app shows you: the MCP checks your Campaigns permissions per data node, keeps only your own timesheet rows when you have only "own timesheet" access, and leaves out projects you may not see.
-- Personal data (for example timesheet descriptions, people on projects, contacts, chats, accounts) is removed unless `COLADA_ALLOW_PERSONAL_DATA=true`. Secrets are never returned.
+- Personal data (for example timesheet descriptions, people on projects, contacts, chats, accounts) is removed unless `COLADA_ALLOW_PERSONAL_DATA=true`. Secrets are never returned. Firebase Storage links (for example snapshot PDFs) keep their access `token` only with `COLADA_ALLOW_PERSONAL_DATA=true`; otherwise it is removed.
 
 ### Campaigns writes
 
