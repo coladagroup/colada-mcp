@@ -205,9 +205,14 @@ export function stripStorageTokens(value: unknown): unknown {
   return value
 }
 
-function finish(result: Record<string, unknown>, removed: Set<string>, removedRecords: number) {
+function finish(
+  result: Record<string, unknown>,
+  removed: Set<string>,
+  removedRecords: number,
+  allowPersonalData: boolean
+) {
   const output = {
-    ...(stripStorageTokens(result) as Record<string, unknown>),
+    ...(allowPersonalData ? result : (stripStorageTokens(result) as Record<string, unknown>)),
     removedFields: [...removed].sort(),
     ...(removedRecords > 0 ? { removedRecords } : {})
   }
@@ -300,7 +305,12 @@ export async function readRtdb(app: App, ctx: FirebaseToolContext, input: RtdbIn
       : input.select === undefined
         ? { ...(count === undefined ? {} : { count }), data }
         : { ...(count === undefined ? {} : { count }), data: selectPaths(data, input.select), selected: input.select }
-  return finish({ app: input.app, store: 'rtdb', path: input.path, ...body }, removed, rows.removedRecords)
+  return finish(
+    { app: input.app, store: 'rtdb', path: input.path, ...body },
+    removed,
+    rows.removedRecords,
+    allowPersonalData
+  )
 }
 
 function localOptionName(ops: LocalOps): string {
@@ -371,7 +381,12 @@ export async function readFirestore(app: App, ctx: FirebaseToolContext, input: F
     const doc = response.body as FirestoreDocument
     const id = rest[0] ?? ''
     applyRowRules(rule, rest, fromFirestoreFields(doc.fields), rowContext)
-    return finish({ ...base, id, updateTime: doc.updateTime, data: clean(id, doc.fields) }, removed, 0)
+    return finish(
+      { ...base, id, updateTime: doc.updateTime, data: clean(id, doc.fields) },
+      removed,
+      0,
+      allowPersonalData
+    )
   }
   const body = (response.body ?? {}) as { documents?: FirestoreDocument[]; nextPageToken?: string }
   const docs = (body.documents ?? []).map((doc) => ({
@@ -392,7 +407,8 @@ export async function readFirestore(app: App, ctx: FirebaseToolContext, input: F
   return finish(
     { ...base, documents, ...(body.nextPageToken ? { nextPageToken: body.nextPageToken } : {}) },
     removed,
-    kept.removedRecords
+    kept.removedRecords,
+    allowPersonalData
   )
 }
 
@@ -457,7 +473,8 @@ export async function readBudget(app: App, ctx: FirebaseToolContext, input: Budg
       ...(input.rows === false ? {} : { rows: flattenBudget(list, currency, rates) })
     },
     new Set(),
-    0
+    0,
+    allowPersonalData
   )
 }
 
@@ -507,7 +524,7 @@ export async function searchKnowledgeBase(app: App, ctx: FirebaseToolContext, in
     }
   }
   visit(value, [])
-  return finish({ app: 'campaigns', query: input.query, matches, items: found }, removed, 0)
+  return finish({ app: 'campaigns', query: input.query, matches, items: found }, removed, 0, allowPersonalData)
 }
 
 function kbChildren(nodes: unknown): Record<string, unknown>[] {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.2
+
+### Changes
+- Firebase reads keep the `token` parameter of Firebase Storage links when `COLADA_ALLOW_PERSONAL_DATA=true`, so snapshot PDFs can be downloaded from the `pdf` link. With personal data off the token is still removed.
+
 ## 0.8.1
 
 ### Changes

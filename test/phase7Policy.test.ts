@@ -120,4 +120,13 @@ describe('Firebase Storage links (S14, AC-7.11)', () => {
     expect(result.text).toContain(`${LINK}?alt=media`)
     expect(result.text).not.toContain('token=')
   })
+
+  it('rtdb_get keeps the token when personal data is allowed', async () => {
+    const { h, fw } = await firebaseSetup({ allowPersonalData: true })
+    harnesses.push(h)
+    fw.rtdb[WS_A] = { tags: { g1: { name: 'Billable', icon: `${LINK}?alt=media&token=secret-token` } } }
+    const result = await h.call('rtdb_get', { workspace: WS_A, app: 'campaigns', path: 'tags' })
+    expect(result.isError).toBe(false)
+    expect(result.text).toContain(`${LINK}?alt=media&token=secret-token`)
+  })
 })
